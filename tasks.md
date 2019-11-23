@@ -26,3 +26,4 @@
 ---
 ## 3. DNN-based Readout Models:
    i. Develop DNN-based models for readout of SC-based quantum circuits.
+   ii. Develop DNN-based models for readout of trapped-ion qubits
