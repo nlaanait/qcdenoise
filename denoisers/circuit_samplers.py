@@ -1,4 +1,5 @@
 from warnings import warn
+import io
 import numpy as np
 from qiskit import QuantumCircuit
 from qiskit import Aer, execute
@@ -6,48 +7,106 @@ from qiskit.providers.aer import QasmSimulator
 from qiskit.providers.aer.noise import NoiseModel, errors
 from qiskit.quantum_info.operators import Operator
 
+global seed
+seed = 1234
+np.random.seed(seed)
 
 class CircuitSampler:
-    def __init__(self):
-        pass
-
-    def build_GHZ(self, n_qubits=2, insert_unitary=True, unitary_op=None):
-        assert n_qubits >= 2, "# of qubits must be 2 or larger"
-        # use identity for a unitary op if not passed
-        if insert_unitary:
-            if unitary_op is None:
-                unitary_op = Operator(np.identity(4))
-            else:
-                assert isinstance(unitary_op, Operator), "unitary op must be instance of qiskit.quantum_info.operators.Operator"
-        circ = QuantumCircuit(n_qubits, n_qubits)
-        circ.h(0)
-        ops_labels = []
-        for q in range(n_qubits-1):
-            circ.cx(q, q+1)
-            if insert_unitary and bool(np.random.choice(2)):
-                    label = 'unitary_{}_{}'.format(q,q+1)
-                    ops_labels.append(label)
-                    circ.unitary(unitary_op, [q, q+1], label=label)
-        ## TODO: must check if built circuit is unitary
-        # measure
-        circ.measure(range(n_qubits), range(n_qubits))
-        return circ, ops_labels
-    
-
-    def build_unitary_noise_model(self, unitary_ops, noise_specs={'type':'phase_amplitude_damping_error', 
-                                                  'max_prob':0.1}):
-        noise_model = NoiseModel()
-        callbacks = {'phase_amplitude_damping_error': CircuitSampler.get_phase_amp_damp_error,
+    def __init__(self, n_qubits= 2, circuit_name='GHZ', n_shots=1024, noise_specs={'class': 'unitary_noise', 'type':'phase_amplitude_damping_error', 
+                                                  'max_prob':0.1, 'unitary_op':None}, verbose=True):
+        self.circuit_name = circuit_name
+        self.n_qubits = n_qubits
+        self.n_shots = n_shots
+        self.verbose = verbose
+        self.callbacks = {'phase_amplitude_damping_error': CircuitSampler.get_phase_amp_damp_error,
                     'amplitude_damping_error': CircuitSampler.get_amp_damp_error}
-        error_type = noise_specs.pop('type')
-        if unitary_ops:
-            assert error_type in list(callbacks.keys()), "noise type must be of type {}".format(list(callbacks.keys()))
-            try:
-                error_call = getattr(errors, error_type)
-            except AttributeError as e:
-                print(e)
-            for op in unitary_ops:
-                error = callbacks[error_type](error_call, **noise_specs) 
+        self.insert_unitary = False
+        self.noise = False
+        self.noise_specs = noise_specs if noise_specs is not None else None
+        self.noise_model = NoiseModel()
+        # check attributes 
+        assert n_qubits >= 2, "# of qubits must be 2 or larger"
+        # populate noise model attributes and do checks on model specs
+        if self.noise_specs:
+            self.noise = True
+            self.error_type = self.noise_specs.pop('type')
+            if self.noise_specs:
+                self.noise_class = self.noise_specs.pop('class')
+                if self.noise_class == 'unitary_noise':
+                    self.insert_unitary = True
+                    assert self.error_type in list(self.callbacks.keys()), "noise 'type' must be one of: {}".format(list(self.callbacks.keys()))
+                    try:
+                        getattr(errors, self.error_type)
+                        self.unitary_op = self.noise_specs.pop('unitary_op')
+                        if self.unitary_op is None:
+                            self.unitary_op = Operator(np.identity(4))
+                        else:
+                            assert isinstance(self.unitary_op, Operator), "unitary op must be instance of qiskit.quantum_info.operators.Operator"
+                        self.print_verbose("Using Unitary Noise Model ({})".format(self.error_type))
+                    except AttributeError as e:
+                        print(e)
+                else:
+                    raise NotImplementedError("Noise model: '{}' is not implemented".format(self.noise_class))
+            else:
+                self.print_verbose("Ideal Circuit Simulation")
+    
+    def print_verbose(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, **kwargs)
+
+    def build_circuit(self):
+        if self.circuit_name == 'GHZ':
+            self.circuit = self._build_GHZ()
+        else:
+            raise NotImplementedError("circuit: {} has not been implemented.".format(self.circuit_name))
+
+    def build_noise_model(self):
+        if self.noise:
+            if self.noise_class == 'unitary_noise':
+                self.noise_model = self._build_unitary_noise_model()
+
+    def execute_circuit(self):
+        job = execute(self.circuit, QasmSimulator(), noise_model= self.noise_model, seed_simulator=seed, shots=self.n_shots)
+        result = job.result()
+        prob_dict = result.get_counts()
+        binary_strings = CircuitSampler.generate_binary_strings(self.n_qubits)
+        full_prob_dict = dict([(key, 0) for key in binary_strings])
+        for key, itm in prob_dict.items():
+            full_prob_dict[key] = itm / self.n_shots
+        return full_prob_dict
+        
+    def get_prob_vector(self, ideal=True):
+        noise_prob = self.execute_circuit()
+        if ideal:
+            old_max_prob = self.noise_specs['max_prob']
+            self.noise_specs['max_prob'] /= 100
+            self.build_noise_model()
+            ideal_prob = self.execute_circuit()
+            self.noise_specs['max_prob'] = old_max_prob
+        prob_arr = np.array([[noise_val, ideal_val] for (_, noise_val), (_, ideal_val) in zip(noise_prob.items(), ideal_prob.items())])
+        return prob_arr
+
+
+    def _build_GHZ(self):
+        circ = QuantumCircuit(self.n_qubits, self.n_qubits)
+        circ.h(0)
+        self.ops_labels = []
+        for q in range(self.n_qubits-1):
+            circ.cx(q, q+1)
+            if self.insert_unitary and bool(np.random.choice(2)):
+                label = 'unitary_{}_{}'.format(q,q+1)
+                self.ops_labels.append(label)
+                circ.unitary(self.unitary_op, [q, q+1], label=label)
+        ## TODO: must check if built circuit is unitary
+        circ.measure(range(self.n_qubits), range(self.n_qubits))
+        return circ
+    
+    def _build_unitary_noise_model(self):
+        error_call = getattr(errors, self.error_type)
+        noise_model = NoiseModel()
+        if self.ops_labels:
+            for op in self.ops_labels:
+                error = self.callbacks[self.error_type](error_call, **self.noise_specs) 
                 noise_model.add_all_qubit_quantum_error(error, op)
             noise_model.add_basis_gates(['unitary'])
             return noise_model
@@ -57,7 +116,7 @@ class CircuitSampler:
     def get_phase_amp_damp_error(func, max_prob=0.1):
         phases = np.random.uniform(high=max_prob, size=2)
         amps = np.random.uniform(high=max_prob, size=2)
-        amps = [min(amp, 1-phase) for amp, phase in zip(amps, phases)]
+        # amps = [min(amp, 1-phase/10) for amp, phase in zip(amps, phases)]
         q_error_1 = func(phases[0], amps[0])
         q_error_2 = func(phases[1], amps[1])
         unitary_error = q_error_1.tensor(q_error_2) 
@@ -71,19 +130,45 @@ class CircuitSampler:
         unitary_error = q_error_1.tensor(q_error_2) 
         return unitary_error
 
+    @staticmethod
+    def generate_binary_strings(n_qubits):
+        global string
+        string = io.StringIO()
+        # recursive func
+        def generate_bitstring(n_qubits, bit_string, i):  
+            if i == n_qubits:
+                global string
+                s = ''
+                print(s.join(bit_string), file=string)
+                return
+            bit_string[i] = '0'
+            generate_bitstring(n_qubits, bit_string, i + 1)
+            bit_string[i] = '1'
+            generate_bitstring(n_qubits, bit_string, i + 1)
+        bit_string = [None]*n_qubits
+        # recursive call and parse string buffer
+        generate_bitstring(n_qubits, bit_string, 0)
+        s = string.getvalue()
+        binary_strings = s.split('\n')
+        binary_strings.pop()
+        return binary_strings
 
 if __name__ == "__main__":
-    circ_sampler = CircuitSampler()
-    # Build 10-qubit GHZ with randomly inserted unitary operators
-    circ, ops_labels = circ_sampler.build_GHZ(10, insert_unitary=True)
-    # Randomly apply Krauss operators to unitary operators to generate 1-qbit errors
-    noise_specs = {'type':'amplitude_damping_error', 'max_prob': 0.001}
-    noise_specs = {'type':'phase_amplitude_damping_error', 'max_prob': 0.001}
-    noise_model = circ_sampler.build_unitary_noise_model(ops_labels, noise_specs=noise_specs)
-    # execute
-    try:
-        job = execute(circ, QasmSimulator(), noise_model=noise_model, seed_simulator=1234, memory=True)
-    except Exception as e:
-        print('Circuit execution failed!!')
-        print(e)
+    # Build 10-qubit GHZ with randomly inserted unitary operators and noised'em up
+    noise_specs = {'class':'unitary_noise', 
+                    'type':'phase_amplitude_damping_error', 
+                    # 'type':'amplitude_damping_error', 
+                    'max_prob': 0.35, 
+                    'unitary_op':None}
+    circuit_name = 'GHZ'
+    n_qubits = 5
+    circ_sampler = CircuitSampler(circuit_name=circuit_name, n_qubits=n_qubits, noise_specs=noise_specs, verbose=False)
+    for i in range(10):
+        print('sample %d' %i)
+        circ_sampler.build_circuit()
+        circ_sampler.build_noise_model()
+        # res = circ_sampler.execute_circuit()
+        prob = circ_sampler.get_prob_vector()
+        print(prob)
+     
 
