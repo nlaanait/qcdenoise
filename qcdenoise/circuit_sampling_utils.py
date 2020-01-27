@@ -1,7 +1,7 @@
 import multiprocessing as mp
 import os
 import numpy as np
-from circuit_samplers import CircuitSampler
+from .circuit_samplers import CircuitSampler
 
 def sample_circuit(args):
     n_samples, n_qubits, circuit_name, noise_specs = args[:]
