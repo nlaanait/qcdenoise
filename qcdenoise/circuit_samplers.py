@@ -1,8 +1,7 @@
 from warnings import warn
 import io
 import numpy as np
-from qiskit import QuantumCircuit
-from qiskit import Aer, execute
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, execute
 from qiskit.providers.aer import QasmSimulator
 from qiskit.providers.aer.noise import NoiseModel, errors
 from qiskit.quantum_info.operators import Operator
@@ -86,19 +85,24 @@ class CircuitSampler:
         prob_arr = np.array([[noise_val, ideal_val] for (_, noise_val), (_, ideal_val) in zip(noise_prob.items(), ideal_prob.items())])
         return prob_arr
 
-
     def _build_GHZ(self):
-        circ = QuantumCircuit(self.n_qubits, self.n_qubits)
-        circ.h(0)
+        q_reg = QuantumRegister(self.n_qubits)
+        c_reg = ClassicalRegister(self.n_qubits)
+        circ = QuantumCircuit(q_reg, c_reg)
+        if self.insert_unitary:
+            # excite one of the qubits to |1> 
+            idx = np.random.randint(0, self.n_qubits)
+            circ.initialize([0,1], q_reg[idx]) #pylint: disable=no-member
+        circ.h(0) #pylint: disable=no-member
         self.ops_labels = []
         for q in range(self.n_qubits-1):
-            circ.cx(q, q+1)
+            circ.cx(q, q+1) #pylint: disable=no-member
             if self.insert_unitary and bool(np.random.choice(2)):
                 label = 'unitary_{}_{}'.format(q,q+1)
                 self.ops_labels.append(label)
-                circ.unitary(self.unitary_op, [q, q+1], label=label)
+                circ.unitary(self.unitary_op, [q, q+1], label=label) #pylint: disable=no-member
         ## TODO: must check if built circuit is unitary
-        circ.measure(range(self.n_qubits), range(self.n_qubits))
+        circ.measure(q_reg, c_reg) #pylint: disable=no-member
         return circ
     
     def _build_unitary_noise_model(self):

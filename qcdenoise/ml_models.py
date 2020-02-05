@@ -1,5 +1,8 @@
 import tensorflow as tf
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 def build_gsn(input_dim, hidden_nodes=1024, hidden_nodes_stochastic=16, walkback=6, noise_rate=0.2):
     x_0 = tf.placeholder(tf.float32, [None, input_dim])
@@ -63,5 +66,22 @@ def get_shared_bias(n, offset = 0):
 def train():
     pass
     
+class DenseModel(nn.Module):
+
+    def __init__(self, inputs_dim=None, targets_dim=None):
+        super(DenseModel, self).__init__()
+        self.fc1  = nn.Linear(inputs_dim, 512)
+        self.fc2 =  nn.Linear(512, 512)
+        self.fc3 = nn.Linear(512, 512)  # 6*6 from image dimension
+        self.fc4 = nn.Linear(512, targets_dim)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = F.relu(self.fc3(x))
+        x = F.relu(self.fc4(x))
+        return x
 
 
+def train_DenseModel(DenseModel):
+    pass

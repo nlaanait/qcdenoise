@@ -1,11 +1,39 @@
 from time import time
+import os
+import subprocess
+import shlex
+import random
 import lmdb
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as TT
-import random
-import os
+
+def pool_shuffle_split(files_dir, file_expr, split=0.8, delete=True):
+    files = os.listdir(files_dir)
+    files = [file for file in files if file_expr in file]
+    runs = np.concatenate([np.load(os.path.join(files_dir, file), mmap_mode='r') for file in files])
+    np.random.shuffle(runs)
+    part = int(runs.shape[0] * split)
+    train = runs[:part]
+    test = runs[part:]
+    np.save(file_expr+'train.npy', train)
+    print('wrote {} with shape {}'.format(file_expr+'train.npy', train.shape))
+    np.save(file_expr+'test.npy', test)
+    print('wrote {} with shape {}'.format(file_expr+'test.npy', test.shape))
+    cond = os.path.exists(file_expr+'train.npy') and os.path.exists(file_expr+'test.npy')
+    if delete and cond:
+        for file in files:
+            file_path = os.path.join(files_dir, file)
+            args = "rm %s" %file_path
+            args = shlex.split(args)
+            if os.path.exists(file_path):
+                try:
+                    subprocess.run(args, check=True, timeout=120)
+                    print("rm %s" % file_path)
+                except subprocess.SubprocessError as e:
+                    print("failed to rm %s" % file_path)
+                    print(e)
 
 def numpy_to_lmdb(lmdb_path, data, labels, lmdb_map_size=int(50e9)):
     env = lmdb.open(lmdb_path, map_size=lmdb_map_size, map_async=True, writemap=True, create=True)
@@ -277,6 +305,37 @@ class QCIRCDataSetMulti(Dataset):
 
     def __repr__(self):
         pass
+
+class QCIRCDataSetNumpy(Dataset):
+    def __init__(self, file_path, input_transform=None, target_transform=None):
+        self.data = np.load(file_path, mmap_mode='r')
+        self.num_samples = self.data.shape[0]
+        self.input_transform = input_transform
+        self.target_transform = target_transform
+    
+    def __len__(self):
+        return self.num_samples
+    
+    def __getitem__(self, idx):
+        inputs = self.data[idx,:,1]
+        targets = self.data[idx,:,0]
+        if inputs.dtype != np.float32:
+            inputs = inputs.astype(np.float32)
+        if targets.dtype != np.float32:
+            targets = targets.astype(np.float32)
+        if self.input_transform:
+            inputs = self.input_transform(inputs)
+        if self.target_transform:
+            targets = self.target_transform(targets)
+        if not isinstance(inputs, torch.Tensor):
+            inputs = torch.from_numpy(inputs) 
+        if not isinstance(targets, torch.Tensor):
+            targets = torch.from_numpy(targets)
+        return {'input':inputs, 'target':targets}
+    
+    def __repr__(self):
+        pass
+
 
 def set_io_affinity(mpi_rank, mpi_size, debug=True):
     """
