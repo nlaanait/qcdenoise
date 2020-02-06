@@ -56,6 +56,8 @@ class CircuitSampler:
     def build_circuit(self):
         if self.circuit_name == 'GHZ':
             self.circuit = self._build_GHZ()
+        elif self.circuit_name == 'UCCSD':
+            self.circuit = self._build_UCCSD()
         else:
             raise NotImplementedError("circuit: {} has not been implemented.".format(self.circuit_name))
 
@@ -75,6 +77,14 @@ class CircuitSampler:
         return full_prob_dict
         
     def get_prob_vector(self, ideal=True):
+        """Returns the output probability vector of the sampled circuit.
+        
+        Keyword Arguments:
+            ideal {bool} -- if True the circuit is executed twice: 1. specified noise and 2. w/o noise (default: {True})
+
+        Returns:
+            numpy.ndarray -- probability vector with shape (2**n_qubits,1) or (2**n_qubits,2) if 'ideal'
+        """
         noise_prob = self.execute_circuit()
         if ideal:
             old_max_prob = self.noise_specs['max_prob']
@@ -82,7 +92,9 @@ class CircuitSampler:
             self.build_noise_model()
             ideal_prob = self.execute_circuit()
             self.noise_specs['max_prob'] = old_max_prob
-        prob_arr = np.array([[noise_val, ideal_val] for (_, noise_val), (_, ideal_val) in zip(noise_prob.items(), ideal_prob.items())])
+            prob_arr = np.array([[noise_val, ideal_val] for (_, noise_val), (_, ideal_val) in zip(noise_prob.items(), ideal_prob.items())])
+            return prob_arr
+        prob_arr = np.array([noise_val for (_, noise_val) in noise_prob.items()]) 
         return prob_arr
 
     def _build_GHZ(self):
@@ -104,7 +116,28 @@ class CircuitSampler:
         ## TODO: must check if built circuit is unitary
         circ.measure(q_reg, c_reg) #pylint: disable=no-member
         return circ
-    
+
+    def _build_UCCSD(self):
+        theta = np.pi * np.random.rand(self.n_qubits)
+        q_reg = QuantumRegister(self.n_qubits)
+        c_reg = ClassicalRegister(self.n_qubits)
+        circ = QuantumCircuit(q_reg, c_reg)
+        for idx, q in enumerate(q_reg):
+            circ.x(q) #pylint: disable=no-member
+            circ.ry(theta[idx],q) #pylint: disable=no-member
+        self.ops_labels = []
+        for (idx, q), q_next in zip(enumerate(q_reg), q_reg[1:]):
+            circ.cry(theta[idx], q, q_next) #pylint: disable=no-member
+            circ.cx(q, q_next) #pylint: disable=no-member
+            # for now not considering cnot gates in controlled-Y
+            if self.insert_unitary and bool(np.random.choice(2)):
+                label = 'unitary_{}_{}'.format(idx, idx+1)
+                self.ops_labels.append(label)
+                circ.unitary(self.unitary_op, [idx, idx+1], label=label) #pylint: disable=no-member
+        ## TODO: must check if built circuit is unitary
+        circ.measure(q_reg, c_reg) #pylint: disable=no-member
+        return circ 
+
     def _build_unitary_noise_model(self):
         error_call = getattr(errors, self.error_type)
         noise_model = NoiseModel()

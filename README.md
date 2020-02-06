@@ -1,6 +1,6 @@
-# gsn_denoisers
+# qcdenoise 
 
-Building Generative Denoisers for quantum hardware
+Machine Learning-based error mitigation of gate-based quantum computers
 
 Note: current access is Internal, will be upgraded to Public in future
 
