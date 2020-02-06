@@ -129,7 +129,7 @@ class CircuitSampler:
         for (idx, q), q_next in zip(enumerate(q_reg), q_reg[1:]):
             circ.cry(theta[idx], q, q_next) #pylint: disable=no-member
             circ.cx(q, q_next) #pylint: disable=no-member
-            # for now not considering cnot gates in controlled-Y
+            # for now not considering noisy cnot gates in controlled-Y
             if self.insert_unitary and bool(np.random.choice(2)):
                 label = 'unitary_{}_{}'.format(idx, idx+1)
                 self.ops_labels.append(label)

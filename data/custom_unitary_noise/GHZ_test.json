@@ -1,0 +1,9 @@
+{
+"class": "unitary_noise",
+"type": "amplitude_damping_error",
+"max_prob": 0.4,
+"unitary_op": null,
+"circuit_name": "GHZ",
+"n_qubits": 8,
+"n_samples": 3800
+}
