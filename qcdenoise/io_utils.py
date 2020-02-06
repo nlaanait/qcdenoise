@@ -317,8 +317,8 @@ class QCIRCDataSetNumpy(Dataset):
         return self.num_samples
     
     def __getitem__(self, idx):
-        inputs = self.data[idx,:,1]
-        targets = self.data[idx,:,0]
+        inputs = self.data[idx,:,0]
+        targets = self.data[idx,:,1]
         if inputs.dtype != np.float32:
             inputs = inputs.astype(np.float32)
         if targets.dtype != np.float32:

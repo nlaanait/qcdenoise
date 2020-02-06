@@ -13,6 +13,6 @@ setup(
     # test_suite='tests',
     python_requires='>=3.6',
     package_dir = {'qcdenoise': 'qcdenoise'},
-    # package_data = {'qcdenoise': 'data'},
-    # include_package_data=True
+    package_data = {'qcdenoise': 'data'},
+    include_package_data=True
 )
