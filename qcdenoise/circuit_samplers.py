@@ -1,7 +1,7 @@
 from warnings import warn
 import io
 import numpy as np
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, execute
+from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, execute, transpile
 from qiskit.providers.aer import QasmSimulator
 from qiskit.providers.aer.noise import NoiseModel, errors
 from qiskit.quantum_info.operators import Operator
@@ -152,8 +152,7 @@ class CircuitSampler:
     @staticmethod
     def get_phase_amp_damp_error(func, max_prob=0.1):
         phases = np.random.uniform(high=max_prob, size=2)
-        amps = np.random.uniform(high=max_prob, size=2)
-        # amps = [min(amp, 1-phase/10) for amp, phase in zip(amps, phases)]
+        amps = [min(0, 0.5-phase) for phase in phases] # hack to force CPTP
         q_error_1 = func(phases[0], amps[0])
         q_error_2 = func(phases[1], amps[1])
         unitary_error = q_error_1.tensor(q_error_2) 
@@ -189,6 +188,68 @@ class CircuitSampler:
         binary_strings = s.split('\n')
         binary_strings.pop()
         return binary_strings
+
+    @staticmethod
+    def get_adjacency_tensor(circ, adj_tensor_dim=256, basis_gates=None, encoding=None):
+        """[summary]
+        
+        Arguments:
+            circ {[type]} -- [description]
+        
+        Keyword Arguments:
+            adj_tensor_dim {int} -- [description] (default: {256})
+            basis_gates {[type]} -- [description] (default: {None})
+            encoding {[type]} -- [description] (default: {None})
+        
+        Returns:
+            [type] -- [description]
+        """
+       
+        def get_dag(**kwargs):
+            global dag
+            dag = kwargs['dag']
+            return dag
+        basis_gates = basis_gates if basis_gates else circ.basis_gates
+        # decompose() is needed to force transpiler to go into custom unitary gate ops
+        circ = transpile(circ.decompose(), basis_gates=basis_gates, optimization_level=0, callback=get_dag)
+        
+        adj_tensor = np.zeros((adj_tensor_dim, n_qubits, n_qubits))
+        encoding = encoding if encoding else {'id': 0, 'cx': 1, 'u1': 2, 'u2':3, 'u3': 4}
+        for gate in dag.gate_nodes():
+            qubits = gate.qargs
+            if qubits:
+                if len(qubits) == 1:
+                    q_idx = qubits[0].index
+                    plane_idx = 0
+                    write_success = False
+                    while plane_idx < adj_tensor.shape[0]:
+                        if adj_tensor[plane_idx, q_idx, q_idx] == 0:
+                            adj_tensor[plane_idx, q_idx, q_idx] = encoding[gate.name]
+                            write_success = True
+                            break
+                        else:
+                            plane_idx +=1
+                    if not write_success:
+                        warn('max # of planes in the adjacency tensor have been exceeded. Initialize a larger adjacency tensor')
+                if len(qubits) == 2:
+                    q_idx_1, q_idx_2 = [q.index for q in qubits]
+                    plane_idx = 0
+                    write_success = False
+                    while plane_idx < adj_tensor.shape[0]:
+                        if adj_tensor[plane_idx, q_idx_1, q_idx_2] == 0: # assume that the graph is undirected
+                            adj_tensor[plane_idx, q_idx_1, q_idx_2] = encoding[gate.name]
+                            adj_tensor[plane_idx, q_idx_2, q_idx_1] = encoding[gate.name]
+                            write_success = True
+                            break
+                        else:
+                            plane_idx += 1
+                    if not write_success:
+                        warn('max # of planes in the adjacency tensor have been exceeded. Initialize a larger adjacency tensor')
+
+        # get rid of planes in adj_tensor with all id gates
+        adj_tensor = np.array([adj_plane for adj_plane in adj_tensor if np.any(adj_plane != np.zeros_like(adj_plane))])
+        return adj_tensor
+
 
 if __name__ == "__main__":
     # Build 10-qubit GHZ with randomly inserted unitary operators and noised'em up
