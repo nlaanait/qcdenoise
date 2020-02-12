@@ -146,11 +146,14 @@ class AdjTModel(nn.Module):
 
 
 class AdjTAsymModel(nn.Module):
-  def __init__(self, inputs_dim=None, targets_dim=None, encodings_dim=None, combine_mode='Add'):
+  def __init__(self, inputs_dim=None, targets_dim=None, encodings_dim=None, 
+                     combine_mode='Add', asym_mode='dense'):
+    assert asym_mode in ['residual', 'dense'], 'asym_mode requested is not implemented'
     super(AdjTAsymModel, self).__init__()
     self.encodings_dim = encodings_dim
     self.combine_mode = combine_mode
     self.targets_dim = targets_dim
+    self.asym_mode = asym_mode
     # layers for prob vector
     self.fc1  = nn.Linear(inputs_dim, 256)
     self.fc2 =  nn.Linear(256, 512)
@@ -170,28 +173,42 @@ class AdjTAsymModel(nn.Module):
     stride_v = [1,1]
     stride_h = stride_v[::-1]
     out_c = 32
-    self.conv1_v = nn.Conv2d(self.encodings_dim[1], out_c, kern_v, padding=pad_v, stride=stride_v, bias=False)
-    self.conv1_h = nn.Conv2d(self.encodings_dim[1], out_c, kern_h, padding=pad_h, stride=stride_h, bias=False)
-    in_c = self.conv1_v.out_channels + self.conv1_h.out_channels
+    self.conv0 = nn.Conv2d(self.encodings_dim[1], out_c, 3, padding=3//2, bias=True)
+    in_c = self.conv0.out_channels
+    self.conv1_v = nn.Conv2d(in_c, out_c, kern_v, padding=pad_v, stride=stride_v, bias=False)
+    self.conv1_h = nn.Conv2d(out_c, out_c, kern_h, padding=pad_h, stride=stride_h, bias=False)
+    in_c = self.calc_in_c(in_c, self.conv1_h)
     self.conv1 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    in_c = self.conv1.out_channels
     self.bn1 = nn.BatchNorm2d(self.conv1.out_channels)
     self.conv2_v = nn.Conv2d(self.conv1.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
-    self.conv2_h = nn.Conv2d(self.conv1.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
-    in_c = self.conv2_v.out_channels + self.conv2_h.out_channels 
+    self.conv2_h = nn.Conv2d(self.conv2_v.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
+    in_c = self.calc_in_c(in_c, self.conv2_h) 
     self.conv2 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    in_c = self.conv2.out_channels
     self.bn2 = nn.BatchNorm2d(self.conv2.out_channels)
     self.conv3_v = nn.Conv2d(self.conv2.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
-    self.conv3_h = nn.Conv2d(self.conv2.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
-    in_c = self.conv3_v.out_channels + self.conv3_h.out_channels 
+    self.conv3_h = nn.Conv2d(self.conv3_v.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
+    in_c = self.calc_in_c(in_c, self.conv3_h)
     self.conv3 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    in_c = self.conv3.out_channels
     self.bn3 = nn.BatchNorm2d(self.conv3.out_channels)
     self.conv4_v = nn.Conv2d(self.conv3.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
-    self.conv4_h = nn.Conv2d(self.conv3.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
-    in_c = self.conv4_h.out_channels + self.conv4_v.out_channels
+    self.conv4_h = nn.Conv2d(self.conv4_v.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
+    in_c = self.calc_in_c(in_c, self.conv4_h)
     self.conv4 = nn.Conv2d(in_c, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), 3, padding=3//2, bias=False)
     self.bn4 = nn.BatchNorm2d(self.conv4.out_channels)
 
+
+  def calc_in_c(self, in_c, prev_conv):
+    if self.asym_mode == 'residual':
+          in_c = prev_conv.out_channels
+    elif self.asym_mode == 'dense':
+          in_c += prev_conv.out_channels
+    return in_c
+
   def forward(self, prob, adjT):
+    # forward on prob vec branch
     prob = F.relu(self.fc1(prob))
     prob = F.relu(self.fc2(prob))
     prob = F.relu(self.fc3(prob))
@@ -199,11 +216,18 @@ class AdjTAsymModel(nn.Module):
     prob = F.relu(self.fc5(prob))
     prob = F.relu(self.fc6(prob))
     prob = self.fc7(prob)
+    
+    # forward on adjacency tensor branch
+    if self.asym_mode == 'residual':
+      asym_block = self.residual_block
+    elif self.asym_mode == 'dense':
+      asym_block = self.dense_block
 
-    adjT = self.asym_block(adjT, self.bn1, self.conv1, self.conv1_h, self.conv1_v)
-    adjT = self.asym_block(adjT, self.bn2, self.conv2, self.conv2_h, self.conv2_v)
-    adjT = self.asym_block(adjT, self.bn3, self.conv3, self.conv3_h, self.conv3_v)
-    adjT = self.asym_block(adjT, self.bn4, self.conv4, self.conv4_h, self.conv4_v)
+    adjT = self.conv0(adjT)
+    adjT = asym_block(adjT, self.bn1, self.conv1, self.conv1_h, self.conv1_v)
+    adjT = asym_block(adjT, self.bn2, self.conv2, self.conv2_h, self.conv2_v)
+    adjT = asym_block(adjT, self.bn3, self.conv3, self.conv3_h, self.conv3_v)
+    adjT = asym_block(adjT, self.bn4, self.conv4, self.conv4_h, self.conv4_v)
 
     # combine output of both branches
     x = self.combine(prob, adjT)
@@ -211,13 +235,22 @@ class AdjTAsymModel(nn.Module):
     x = self.softmax(x)
     return x
 
-  def asym_block(self, x, bn, conv, conv_h, conv_v):
-    x_v = F.relu(conv_v(x))
-    x_h = F.relu(conv_h(x))
-    x = torch.cat([x_v,x_h], dim=1)
+  def dense_block(self, x, bn, conv, conv_h, conv_v):
+    out = x
+    x = F.relu(conv_v(x))
+    x = F.relu(conv_h(x))
+    x = torch.cat([out,x], dim=1)
     x = F.relu(bn(conv(x)))
     return x
   
+  def residual_block(self, x, bn, conv, conv_h, conv_v):
+    residual = x
+    x = F.relu(conv_v(x))
+    x = F.relu(conv_h(x))
+    x += residual
+    x = F.relu(bn(conv(x)))
+    return x
+
   def combine(self, x, y):
     if self.combine_mode == 'Add':
       y = y.view(x.shape)
@@ -226,6 +259,12 @@ class AdjTAsymModel(nn.Module):
       y = y.view(-1, self.targets_dim)
       return x * y
 
-        
+
+if __name__ == "__main__":
+  inputs_dim = 256
+  targets_dim = 256
+  encodings_dim = [8,8,8]
+  net = AdjTAsymModel(inputs_dim=inputs_dim, targets_dim=targets_dim, encodings_dim=encodings_dim)
+  print(net)
 
 
