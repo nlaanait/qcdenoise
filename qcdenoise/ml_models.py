@@ -5,6 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+#pylint: disable=no-member
+
 def build_gsn(input_dim, hidden_nodes=1024, hidden_nodes_stochastic=16, walkback=6, noise_rate=0.2):
     x_0 = tf.placeholder(tf.float32, [None, input_dim])
     W1 = get_shared_weights(input_dim, hidden_nodes, np.sqrt(1 / (hidden_nodes + input_dim)))
@@ -76,6 +78,7 @@ class DenseModel(nn.Module):
         self.fc5 =  nn.Linear(1024, 512)
         self.fc6 = nn.Linear(512, 512)  
         self.fc7 = nn.Linear(512, targets_dim)
+        self.fc8 = nn.Linear(targets_dim, targets_dim)
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
@@ -88,3 +91,141 @@ class DenseModel(nn.Module):
         x = self.fc7(x)
         x = self.softmax(x)
         return x
+
+class AdjTModel(nn.Module):
+  def __init__(self, inputs_dim=None, targets_dim=None, encodings_dim=None, combine_mode='Add'):
+    super(AdjTModel, self).__init__()
+    self.encodings_dim = encodings_dim
+    self.combine_mode = combine_mode
+    self.targets_dim = targets_dim
+    self.fc1  = nn.Linear(inputs_dim, 256)
+    self.fc2 =  nn.Linear(256, 512)
+    self.fc3 =  nn.Linear(512, 512)
+    self.fc4 =  nn.Linear(512, 512)
+    self.fc5 =  nn.Linear(512, 256)
+    self.fc6 = nn.Linear(256, 256)  
+    self.fc7 = nn.Linear(256, targets_dim)
+    self.fc8 = nn.Linear(targets_dim, targets_dim)
+    self.conv1 = nn.Conv2d(self.encodings_dim[0], 32, 3, padding=3//2, bias=False)
+    self.bn1 = nn.BatchNorm2d(self.conv1.out_channels)
+    self.conv2 = nn.Conv2d(32, 64, 3, padding=3//2, bias=False)
+    self.bn2 = nn.BatchNorm2d(self.conv2.out_channels)
+    self.conv3 = nn.Conv2d(64, 64, 3, padding=3//2, bias=False)
+    self.bn3 = nn.BatchNorm2d(self.conv3.out_channels)
+    self.conv4 = nn.Conv2d(64, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), 3, padding=3//2, bias=False)
+    self.bn4 = nn.BatchNorm2d(self.conv4.out_channels)
+    self.softmax = nn.Softmax(dim=1)
+
+  def forward(self, prob, adjT):
+    prob = F.relu(self.fc1(prob))
+    prob = F.relu(self.fc2(prob))
+    prob = F.relu(self.fc3(prob))
+    prob = F.relu(self.fc4(prob))
+    prob = F.relu(self.fc5(prob))
+    prob = F.relu(self.fc6(prob))
+    prob = self.fc7(prob)
+
+    adjT = F.relu(self.bn1(self.conv1(adjT)))
+    adjT = F.relu(self.bn2(self.conv2(adjT)))
+    adjT = F.relu(self.bn3(self.conv3(adjT)))
+    adjT = F.relu(self.bn4(self.conv4(adjT)))
+
+    # combine output of both branches
+    x = self.combine(prob, adjT)
+    x = F.relu(self.fc8(x))
+    x = self.softmax(x)
+    return x
+
+  def combine(self, x, y):
+    if self.combine_mode == 'Add':
+      y = y.view(x.shape)
+      return x + y
+    elif self.combine_mode == 'Multiply':
+      y = y.view(-1, self.targets_dim)
+      return x * y
+
+
+class AdjTAsymModel(nn.Module):
+  def __init__(self, inputs_dim=None, targets_dim=None, encodings_dim=None, combine_mode='Add'):
+    super(AdjTAsymModel, self).__init__()
+    self.encodings_dim = encodings_dim
+    self.combine_mode = combine_mode
+    self.targets_dim = targets_dim
+    # layers for prob vector
+    self.fc1  = nn.Linear(inputs_dim, 256)
+    self.fc2 =  nn.Linear(256, 512)
+    self.fc3 =  nn.Linear(512, 512)
+    self.fc4 =  nn.Linear(512, 512)
+    self.fc5 =  nn.Linear(512, 256)
+    self.fc6 = nn.Linear(256, 256)  
+    self.fc7 = nn.Linear(256, targets_dim)
+    self.fc8 = nn.Linear(targets_dim, targets_dim)
+    self.softmax = nn.Softmax(dim=1)
+    # layers for adjacency tensor
+    adj_c = self.encodings_dim[2]
+    kern_v = [adj_c + adj_c%2 -1, 1]
+    kern_h = kern_v[::-1]
+    pad_v = [kern_v[0]//2, kern_v[1]//2]
+    pad_h = pad_v[::-1]
+    stride_v = [1,1]
+    stride_h = stride_v[::-1]
+    out_c = 32
+    self.conv1_v = nn.Conv2d(self.encodings_dim[1], out_c, kern_v, padding=pad_v, stride=stride_v, bias=False)
+    self.conv1_h = nn.Conv2d(self.encodings_dim[1], out_c, kern_h, padding=pad_h, stride=stride_h, bias=False)
+    in_c = self.conv1_v.out_channels + self.conv1_h.out_channels
+    self.conv1 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    self.bn1 = nn.BatchNorm2d(self.conv1.out_channels)
+    self.conv2_v = nn.Conv2d(self.conv1.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
+    self.conv2_h = nn.Conv2d(self.conv1.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
+    in_c = self.conv2_v.out_channels + self.conv2_h.out_channels 
+    self.conv2 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    self.bn2 = nn.BatchNorm2d(self.conv2.out_channels)
+    self.conv3_v = nn.Conv2d(self.conv2.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
+    self.conv3_h = nn.Conv2d(self.conv2.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
+    in_c = self.conv3_v.out_channels + self.conv3_h.out_channels 
+    self.conv3 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    self.bn3 = nn.BatchNorm2d(self.conv3.out_channels)
+    self.conv4_v = nn.Conv2d(self.conv3.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
+    self.conv4_h = nn.Conv2d(self.conv3.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
+    in_c = self.conv4_h.out_channels + self.conv4_v.out_channels
+    self.conv4 = nn.Conv2d(in_c, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), 3, padding=3//2, bias=False)
+    self.bn4 = nn.BatchNorm2d(self.conv4.out_channels)
+
+  def forward(self, prob, adjT):
+    prob = F.relu(self.fc1(prob))
+    prob = F.relu(self.fc2(prob))
+    prob = F.relu(self.fc3(prob))
+    prob = F.relu(self.fc4(prob))
+    prob = F.relu(self.fc5(prob))
+    prob = F.relu(self.fc6(prob))
+    prob = self.fc7(prob)
+
+    adjT = self.asym_block(adjT, self.bn1, self.conv1, self.conv1_h, self.conv1_v)
+    adjT = self.asym_block(adjT, self.bn2, self.conv2, self.conv2_h, self.conv2_v)
+    adjT = self.asym_block(adjT, self.bn3, self.conv3, self.conv3_h, self.conv3_v)
+    adjT = self.asym_block(adjT, self.bn4, self.conv4, self.conv4_h, self.conv4_v)
+
+    # combine output of both branches
+    x = self.combine(prob, adjT)
+    x = F.relu(self.fc8(x))
+    x = self.softmax(x)
+    return x
+
+  def asym_block(self, x, bn, conv, conv_h, conv_v):
+    x_v = F.relu(conv_v(x))
+    x_h = F.relu(conv_h(x))
+    x = torch.cat([x_v,x_h], dim=1)
+    x = F.relu(bn(conv(x)))
+    return x
+  
+  def combine(self, x, y):
+    if self.combine_mode == 'Add':
+      y = y.view(x.shape)
+      return x + y
+    elif self.combine_mode == 'Multiply':
+      y = y.view(-1, self.targets_dim)
+      return x * y
+
+        
+
+

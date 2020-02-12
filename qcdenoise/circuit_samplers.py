@@ -1,6 +1,7 @@
 from warnings import warn
 import io
 import numpy as np
+import qiskit
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister, execute, transpile
 from qiskit.providers.aer import QasmSimulator
 from qiskit.providers.aer.noise import NoiseModel, errors
@@ -96,6 +97,7 @@ class CircuitSampler:
             return prob_arr
         prob_arr = np.array([noise_val for (_, noise_val) in noise_prob.items()]) 
         return prob_arr
+        
 
     def _build_GHZ(self):
         q_reg = QuantumRegister(self.n_qubits)
@@ -143,11 +145,39 @@ class CircuitSampler:
         noise_model = NoiseModel()
         if self.ops_labels:
             for op in self.ops_labels:
-                error = self.callbacks[self.error_type](error_call, **self.noise_specs) 
+                error, params = self.callbacks[self.error_type](error_call, **self.noise_specs)
+                self.print_verbose(params) 
                 noise_model.add_all_qubit_quantum_error(error, op)
             noise_model.add_basis_gates(['unitary'])
             return noise_model
         return noise_model
+
+    def get_adjacency_tensor(self, max_tensor_dims=16, basis_gates=['id', 'cx', 'u1', 'u2', 'u3'], fixed_size=True):
+        """[summary]
+        
+        Keyword Arguments:
+            num_dims {int} -- [description] (default: {16})
+            basis_gates {[type]} -- [description] (default: {None})
+        
+        Returns:
+            [type] -- [description]
+        """
+        def get_dag(**kwargs):
+            """Transpiler callable
+            
+            Returns:
+                qiskit.dagcircuit.dagcircuit -- Directed Acyclic Graph representation of transpiled circuit
+            """
+            global dag
+            dag = kwargs['dag']
+            return dag
+        if self.noise_model:
+            basis_gates = self.noise_model.basis_gates
+            self.print_verbose('Using noise model basis gates in transpilation.')
+        # decompose() is needed to force transpiler to go into custom unitary gate ops
+        _ = transpile(self.circuit.decompose(), basis_gates=basis_gates, optimization_level=0, callback=get_dag)
+        adj_T = CircuitSampler.generate_adjacency_tensor(dag, adj_tensor_dim=(max_tensor_dims, self.n_qubits, self.n_qubits), encoding=None, fixed_size=fixed_size)
+        return adj_T
 
     @staticmethod
     def get_phase_amp_damp_error(func, max_prob=0.1):
@@ -156,7 +186,7 @@ class CircuitSampler:
         q_error_1 = func(phases[0], amps[0])
         q_error_2 = func(phases[1], amps[1])
         unitary_error = q_error_1.tensor(q_error_2) 
-        return unitary_error
+        return unitary_error, (phases, amps)
 
     @staticmethod
     def get_amp_damp_error(func, max_prob=0.1):
@@ -164,7 +194,7 @@ class CircuitSampler:
         q_error_1 = func(amps[0])
         q_error_2 = func(amps[1])
         unitary_error = q_error_1.tensor(q_error_2) 
-        return unitary_error
+        return unitary_error, amps
 
     @staticmethod
     def generate_binary_strings(n_qubits):
@@ -190,31 +220,23 @@ class CircuitSampler:
         return binary_strings
 
     @staticmethod
-    def get_adjacency_tensor(circ, adj_tensor_dim=256, basis_gates=None, encoding=None):
+    def generate_adjacency_tensor(dag, adj_tensor_dim, encoding=None, fixed_size=True):
         """[summary]
-        
+       
         Arguments:
-            circ {[type]} -- [description]
+            dag {[type]} -- [description]
+            adj_tensor_dim {[type]} -- [description]
         
         Keyword Arguments:
-            adj_tensor_dim {int} -- [description] (default: {256})
-            basis_gates {[type]} -- [description] (default: {None})
             encoding {[type]} -- [description] (default: {None})
+            trim {bool} -- [description] (default: {True})
         
         Returns:
             [type] -- [description]
         """
-       
-        def get_dag(**kwargs):
-            global dag
-            dag = kwargs['dag']
-            return dag
-        basis_gates = basis_gates if basis_gates else circ.basis_gates
-        # decompose() is needed to force transpiler to go into custom unitary gate ops
-        circ = transpile(circ.decompose(), basis_gates=basis_gates, optimization_level=0, callback=get_dag)
-        
-        adj_tensor = np.zeros((adj_tensor_dim, n_qubits, n_qubits))
+        adj_tensor = np.zeros(adj_tensor_dim)
         encoding = encoding if encoding else {'id': 0, 'cx': 1, 'u1': 2, 'u2':3, 'u3': 4}
+        assert isinstance(dag, qiskit.dagcircuit.DAGCircuit), 'dag must be an instance of qiskit.dagcircuit.dagcircuit'
         for gate in dag.gate_nodes():
             qubits = gate.qargs
             if qubits:
@@ -246,8 +268,10 @@ class CircuitSampler:
                     if not write_success:
                         warn('max # of planes in the adjacency tensor have been exceeded. Initialize a larger adjacency tensor')
 
-        # get rid of planes in adj_tensor with all id gates
-        adj_tensor = np.array([adj_plane for adj_plane in adj_tensor if np.any(adj_plane != np.zeros_like(adj_plane))])
+        if not fixed_size:
+            # get rid of planes in adj_tensor with all id gates (i.e zeros)
+            all_zeros = np.zeros_like(adj_tensor[0])
+            adj_tensor = np.array([adj_plane for adj_plane in adj_tensor if np.any(adj_plane != all_zeros)])
         return adj_tensor
 
 

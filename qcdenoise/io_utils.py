@@ -7,7 +7,8 @@ import lmdb
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-import torchvision.transforms as TT
+
+#pylint: disable=no-member
 
 def pool_shuffle_split(files_dir, file_expr, split=0.8, delete=True):
     files = os.listdir(files_dir)
@@ -17,9 +18,9 @@ def pool_shuffle_split(files_dir, file_expr, split=0.8, delete=True):
     part = int(runs.shape[0] * split)
     train = runs[:part]
     test = runs[part:]
-    np.save(file_expr+'train.npy', train)
+    np.save(file_expr+'train.npy', train, allow_pickle=False)
     print('wrote {} with shape {}'.format(file_expr+'train.npy', train.shape))
-    np.save(file_expr+'test.npy', test)
+    np.save(file_expr+'test.npy', test, allow_pickle=False)
     print('wrote {} with shape {}'.format(file_expr+'test.npy', test.shape))
     cond = os.path.exists(file_expr+'train.npy') and os.path.exists(file_expr+'test.npy')
     if delete and cond:
@@ -35,129 +36,49 @@ def pool_shuffle_split(files_dir, file_expr, split=0.8, delete=True):
                     print("failed to rm %s" % file_path)
                     print(e)
 
-def numpy_to_lmdb(lmdb_path, data, labels, lmdb_map_size=int(50e9)):
+def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=int(10e9)):
     env = lmdb.open(lmdb_path, map_size=lmdb_map_size, map_async=True, writemap=True, create=True)
+    prob_data = np.load(prob_data_path, mmap_mode='r')
+    adjT_data = np.load(adjT_data_path, mmap_mode='r')
     with env.begin(write=True) as txn:
-        for (i, datum) , label in zip(enumerate(data), labels):
-            key = bytes('input_%s'%format(i), "ascii")
-            inputs_shape = datum.shape
-            outputs_shape = label.shape
-            inputs = datum.flatten().tostring()
+        for (idx, prob) , adjT in zip(enumerate(prob_data), adjT_data):
+            prob_noise = prob[:,0]
+            prob_ideal = prob[:,1]
+            inputs_shape = prob_noise.shape
+            targets_shape = prob_ideal.shape
+            encoding_shape = adjT.shape
+            inputs = prob_noise.flatten().tostring()
+            key = bytes('input_%s'%format(idx), "ascii")
             txn.put(key, inputs)
-            key = bytes('output_%s'%format(i), "ascii")
-            outputs = label.flatten().tostring()
-            txn.put(key, outputs)
+            key = bytes('target_%s'%format(idx), "ascii")
+            targets = prob_ideal.flatten().tostring()
+            txn.put(key, targets)
+            key = bytes('encoding_%s'%format(idx), "ascii")
+            encodings = adjT.flatten().tostring()
+            txn.put(key, encodings)
+
         env.sync()
-        headers = { b"input_dtype": bytes(datum.dtype.str, "ascii"),
+
+        headers = { b"input_dtype": bytes(prob_noise.dtype.str, "ascii"),
                     b"input_shape": np.array(inputs_shape).tostring(),
-                    b"output_shape": np.array(outputs_shape).tostring(),
-                    b"output_dtype": bytes(label.dtype.str, "ascii"),
-                    b"output_name": bytes('output_', "ascii"),
-                    b"input_name": bytes('input_', "ascii")}
+                    b"target_shape": np.array(targets_shape).tostring(),
+                    b"target_dtype": bytes(prob_ideal.dtype.str, "ascii"),
+                    b"encoding_shape": np.array(encoding_shape).tostring(),
+                    b"encoding_dtype": bytes(adjT.dtype.str, "ascii"), 
+                    b"target_name": bytes('target_', "ascii"),
+                    b"input_name": bytes('input_', "ascii"),
+                    b"encoding_name": bytes('encoding_', "ascii")}
         for key, val in headers.items():
             txn.put(key, val)
         txn.put(b"header_entries", bytes(len(list(headers.items()))))
+        txn.put(b"num_samples", bytes('%s' %str(idx+1), "ascii"))
         env.sync()
-
-class QCIRCTransform:
-
-    """Apply AffineTransform --> RandomCrop --> Uniform Noise"""
-
-    def __init__(self, crop_shape=(64,94), angle=(-5,5), scale=(1,1.1), shear=(-3,3), noise=(0,0.1), translate=(0,1)):
-        """__init__ [summary]
-        
-        Args:
-            crop_shape (tuple, optional): [description]. Defaults to (64,94).
-            angle (tuple, optional): [description]. Defaults to (-5,5).
-            scale (tuple, optional): [description]. Defaults to (1, 1.2).
-            translate (tuple, optional): [description]. Defaults to (0,1).
-            shear (tuple, optional): [description]. Defaults to (-5,5).
-            noise (tuple, optional): [description]. Defaults to (0,0.4).
-        """
-        self.crop_shape = crop_shape
-        self.angle = angle
-        self.scale = scale
-        self.translate = translate
-        self.shear = shear
-        self.noise = noise
-        return 
-    
-    def _get_crops_params(self, shape):
-        """_get_crops_params [summary]
-        
-        Args:
-            shape ([type]): [description]
-        
-        Returns:
-            [type]: [description]
-        """
-        h=self.crop_shape[0]
-        w=self.crop_shape[1]
-        img_h, img_w = shape
-        i= random.uniform(0, img_h-h)
-        j= random.uniform(0, img_w-w)
-        return (i, j, h, w)
-    
-    def _get_affine_params(self):
-        """_get_affine_params [summary]
-        
-        Returns:
-            [type]: [description]
-        """
-        angle = random.uniform(self.angle[0], self.angle[1])
-        translate = random.uniform(self.translate[0], self.translate[1])
-        translate = (translate,)*2
-        scale = random.uniform(self.scale[0], self.scale[1])
-        shear = random.uniform(self.shear[0], self.shear[1])
-        return (angle, translate, scale, shear)
-        
-    def _get_noise_tensor(self, shape):
-        """_get_noise_tensor [summary]
-        
-        Args:
-            shape ([type]): [description]
-        
-        Returns:
-            [type]: [description]
-        """
-        noise_tens = torch.randint(2, shape, dtype=torch.float32)
-        noise_tens *= random.uniform(self.noise[0], self.noise[1])
-        return noise_tens
-    
-    def __call__(self, x):
-        """__call__ [summary]
-        
-        Args:
-            x ([type]): [description]
-        
-        Returns:
-            [type]: [description]
-        """
-        if len(x.shape) < 3:
-            x = np.expand_dims(x, axis=-1)
-        x = x.astype(np.float32)
-        # get random transform params
-        crops_params = self._get_crops_params(x.shape[:-1])
-        affine_params = self._get_affine_params()
-        # convert to PIL
-        toPIL = TT.ToPILImage()
-        x = toPIL(x)
-        # apply transforms
-        x = TT.functional.affine(x, *affine_params,resample=3)
-        x = TT.functional.crop(x, *crops_params)
-        # convert to tensor and add noise
-        toTens = TT.ToTensor()
-        x = toTens(x)
-        noise = self._get_noise_tensor(x.shape)
-        x +=  noise
-        x[x > 1.001] = 1
-        x[x < 0.001] = 0
-        return x
+    print('wrote lmdb database in %s' % lmdb_path)
 
 class QCIRCDataSet(Dataset):
     """ QCIRC data set on lmdb."""
-    def __init__(self, lmdb_path, key_base = 'sample', input_transform=QCIRCTransform(), target_transform=None,
-                                        debug=True):
+    def __init__(self, lmdb_path, input_transform=None, target_transform=None,
+                                        debug=False):
         """__init__ [summary]
         
         Args:
@@ -170,20 +91,24 @@ class QCIRCDataSet(Dataset):
         self.debug = debug
         self.lmdb_path = lmdb_path
         self.env = lmdb.open(self.lmdb_path, create=False, readahead=False, readonly=True, writemap=False, lock=False)
-        self.num_samples = (self.env.stat()['entries'] - 6)//2 ## TODO: remove hard-coded # of headers by storing #samples key, val
-        self.first_record = 0
-        self.records = np.arange(self.first_record, self.num_samples)
         with self.env.begin(write=False) as txn:
             input_shape = np.frombuffer(txn.get(b"input_shape"), dtype='int64')
-            output_shape = np.frombuffer(txn.get(b"output_shape"), dtype='int64')
+            target_shape = np.frombuffer(txn.get(b"target_shape"), dtype='int64')
+            encoding_shape = np.frombuffer(txn.get(b"encoding_shape"), dtype='int64')
             input_dtype = np.dtype(txn.get(b"input_dtype").decode("ascii"))
-            output_dtype = np.dtype(txn.get(b"output_dtype").decode("ascii"))
-            output_name = txn.get(b"output_name").decode("ascii")
+            target_dtype = np.dtype(txn.get(b"target_dtype").decode("ascii"))
+            encoding_dtype = np.dtype(txn.get(b"encoding_dtype").decode("ascii"))
+            target_name = txn.get(b"target_name").decode("ascii")
             input_name = txn.get(b"input_name").decode("ascii")
-        self.data_specs={'input_shape': list(input_shape), 'target_shape': list(output_shape), 
-            'target_dtype':output_dtype, 'input_dtype': input_dtype, 'target_key':output_name, 'input_key': input_name}
+            encoding_name = txn.get(b"encoding_name").decode("ascii")
+            self.num_samples = int(txn.get(b"num_samples").decode("ascii"))
+        self.records = range(0, self.num_samples) 
+        self.data_specs={'input_shape': list(input_shape), 'target_shape': list(target_shape), 'encoding_shape': list(encoding_shape),
+                         'target_dtype':target_dtype, 'input_dtype': input_dtype, 'encoding_dtype': encoding_dtype,
+                         'target_key':target_name, 'input_key': input_name, 'encoding_key': encoding_name}
         self.input_keys = [bytes(self.data_specs['input_key']+str(idx), "ascii") for idx in self.records]
         self.target_keys = [bytes(self.data_specs['target_key']+str(idx), "ascii") for idx in self.records]
+        self.encoding_keys = [bytes(self.data_specs['encoding_key']+str(idx), "ascii") for idx in self.records]
         self.print_debug("Opened lmdb file %s, with %d samples" %(self.lmdb_path, self.num_samples))
         self.input_transform = input_transform
         self.target_transform = target_transform
@@ -193,30 +118,45 @@ class QCIRCDataSet(Dataset):
             print(*args, **kwargs)
 
     def __len__(self):
-        ## TODO: Need to specify how many records are for headers
         return self.num_samples
 
     def __getitem__(self, idx):
         # outside_func(idx)
         input_key = self.input_keys[idx]
         target_key = self.target_keys[idx]
+        encoding_key = self.encoding_keys[idx]
         with self.env.begin(write=False, buffers=True) as txn:
             input_bytes = txn.get(input_key)
             target_bytes = txn.get(target_key)
+            encoding_bytes = txn.get(encoding_key)
         inputs = np.frombuffer(input_bytes, dtype=self.data_specs['input_dtype'])
         inputs = inputs.reshape(self.data_specs['input_shape'])
+        if inputs.dtype != np.float32:
+            inputs = inputs.astype(np.float32)
         targets = np.frombuffer(target_bytes, dtype=self.data_specs['target_dtype'])
         targets = targets.reshape(self.data_specs['target_shape'])
-        self.print_debug('read (inputs, targets) # {idx} with shape ({in_shape}, {trg_shape})'.format(idx=idx, in_shape=inputs.shape, trg_shape=targets.shape))
+        if targets.dtype != np.float32:
+            targets = targets.astype(np.float32)
+        encodings = np.frombuffer(encoding_bytes, dtype=self.data_specs['encoding_dtype'])
+        encodings = encodings.reshape(self.data_specs['encoding_shape'])
+        if encodings.dtype != np.float32:
+            encodings = encodings.astype(np.float32)
+        self.print_debug('read (inputs, targets, encodings) # {idx} with shape ({in_shape}, {trg_shape}, {enc_shape})'\
+                        .format(idx=idx, in_shape=inputs.shape, trg_shape=targets.shape, enc_shape=encodings.shape))
         if self.input_transform is not None:
             inputs = self.transform_input(inputs)
         if self.target_transform is not None:
             targets = self.transform_target(targets)
-        if not isinstance(inputs, torch.Tensor):
-            inputs = torch.from_numpy(inputs) 
-        if not isinstance(targets, torch.Tensor):
-            targets = torch.from_numpy(targets)
-        return {'input':inputs, 'target':targets}
+        if False: # this is only needed if we actually use transforms
+            if not isinstance(inputs, torch.Tensor):
+                inputs = torch.from_numpy(inputs) 
+            if not isinstance(targets, torch.Tensor):
+                targets = torch.from_numpy(targets)
+            if not isinstance(encodings, torch.Tensor):
+                encodings = torch.from_numpy(encodings)
+            return {'input':inputs, 'target':targets, 'encoding': encodings}
+        return {'input':torch.from_numpy(inputs), 'target':torch.from_numpy(targets), 'encoding':torch.from_numpy(encodings)} #pylint: disable=no-member
+
 
     def transform_target(self, targets):
         return self.target_transform(targets)
@@ -335,7 +275,6 @@ class QCIRCDataSetNumpy(Dataset):
     
     def __repr__(self):
         pass
-
 
 def set_io_affinity(mpi_rank, mpi_size, debug=True):
     """
