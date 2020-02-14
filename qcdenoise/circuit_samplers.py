@@ -98,7 +98,9 @@ class CircuitSampler:
         prob_arr = np.array([noise_val for (_, noise_val) in noise_prob.items()]) 
         return prob_arr
         
-
+    def _build_from_graph(self):
+        pass
+    
     def _build_GHZ(self):
         q_reg = QuantumRegister(self.n_qubits)
         c_reg = ClassicalRegister(self.n_qubits)
