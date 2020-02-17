@@ -9,6 +9,9 @@ class CircuitConstructor:
 
     def _build_from_gate_set(self,gate_set):
         '''
+        This was adapted from the _build_GHZ() routine in circuit_sampler
+        So I assumed that the object would have similar class attributes
+        self.n_qubits, self.insert_unitary ... etc
         first draft of building a circuit constructor from a list of gates
         pass gate_set as a list of dictionaries (yes/no?  other?)
         
