@@ -17,7 +17,7 @@ class CircuitConstructor:
                                     {'gate':'I','qubit':2},{'gate':'I','qubit':3}]
         ex (GHZ-3): ['H','CNOT','CNOT'] = [{'gate':'H','qubit':0},{'gate':'CNOT','qubit':(0,1)},\
                                             {'gate':'CNOT','qubit':(1,2)}]
-        ex (C-3): ['H','CNOT','CNOT'] = [{'gate':'H','qubit':0},{'gate':'CNOT','qubit':(0,1)},\
+        ex (C-3): ['H','CNOT','H','CNOT','H','H'] = [{'gate':'H','qubit':0},{'gate':'CNOT','qubit':(0,1)},\
                                             {'gate':'H','qubit':1},{'gate':'CNOT',\
                                             'qubit':(1,2)},{'gate':'H','qubit':0},{'gate':'H','qubit':2}]
         '''
