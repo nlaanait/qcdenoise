@@ -6,9 +6,7 @@ import circuit_samplers as cs
 class CircuitConstructor:
     def __init__(self,n_qubits= 2, block_tuple = (2,1), \
                 circuit_name='graph', n_shots=1024,\
-                 noise_specs={'class': 'unitary_noise',\
-                'type':'phase_amplitude_damping_error',\
-                        'max_prob':0.1, 'unitary_op':None}, verbose=True):
+                verbose=True):
         self.circuit_name = circuit_name
         self.n_qubits = n_qubits
         self.blocks = block_tuple
