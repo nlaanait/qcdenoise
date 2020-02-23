@@ -4,47 +4,16 @@ import qiskit.quantum_info.operators as qops
 import circuit_samplers as cs
 
 class CircuitConstructor:
-    def __init__(self,n_qubits= 2, circuit_name='GHZ', n_shots=1024,\
+    def __init__(self,n_qubits= 2, block_tuple = (2,1), \
+                circuit_name='graph', n_shots=1024,\
                  noise_specs={'class': 'unitary_noise',\
                 'type':'phase_amplitude_damping_error',\
                         'max_prob':0.1, 'unitary_op':None}, verbose=True):
         self.circuit_name = circuit_name
         self.n_qubits = n_qubits
+        self.blocks = block_tuple
         self.n_shots = n_shots
         self.verbose = verbose
-        # remove noise and error unitary stuff
-        
-        self.callbacks = {'phase_amplitude_damping_error': cs.CircuitSampler.get_phase_amp_damp_error,
-                    'amplitude_damping_error': cs.CircuitSampler.get_amp_damp_error}
-        self.insert_unitary = False
-        self.noise = False
-        self.noise_specs = noise_specs if noise_specs is not None else None
-        self.noise_model = qk.aer.noise.NoiseModel()
-        # check attributes 
-        assert n_qubits >= 2, "# of qubits must be 2 or larger"
-        # populate noise model attributes and do checks on model specs
-        if self.noise_specs:
-            self.noise = True
-            self.error_type = self.noise_specs.pop('type')
-            if self.noise_specs:
-                self.noise_class = self.noise_specs.pop('class')
-                if self.noise_class == 'unitary_noise':
-                    self.insert_unitary = True
-                    assert self.error_type in list(self.callbacks.keys()), "noise 'type' must be one of: {}".format(list(self.callbacks.keys()))
-                    try:
-                        getattr(qk.aer.noise.errors, self.error_type)
-                        self.unitary_op = self.noise_specs.pop('unitary_op')
-                        if self.unitary_op is None:
-                            self.unitary_op = qops.Operator(np.identity(4))
-                        else:
-                            assert isinstance(self.unitary_op, qops.Operator), "unitary op must be instance of qiskit.quantum_info.operators.Operator"
-                        self.print_verbose("Using Unitary Noise Model ({})".format(self.error_type))
-                    except AttributeError as e:
-                        print(e)
-                else:
-                    raise NotImplementedError("Noise model: '{}' is not implemented".format(self.noise_class))
-            else:
-                self.print_verbose("Ideal Circuit Simulation")
 
     def _add_Hgate(self,qubit):
         self.gate_list.append({'gate':'H','qubit':qubit})
@@ -145,11 +114,6 @@ class CircuitConstructor:
         q_reg = qk.QuantumRegister(self.n_qubits)
         c_reg = qk.ClassicalRegister(self.n_qubits)
         circ = qk.QuantumCircuit(q_reg, c_reg)
-        if self.insert_unitary:
-            # excite one of the qubits to |1> 
-            idx = np.random.randint(0, self.n_qubits)
-            circ.initialize([0,1], q_reg[idx]) #pylint: disable=no-member
-        self.ops_labels = []
         for gdx in range(len(gate_set)):
             if gate_set[gdx]['gate']=='H':
                 qbx=gate_set[gdx]['qubit']
@@ -183,3 +147,15 @@ class CircuitConstructor:
         """get entropy of final state
         """
         pass
+    
+if __name__ == "__main__":
+    # Build example set of random circuits
+    circuit_name = 'graph'
+    n_qubits = 5
+    circ_constructor = CircuitConstructor(circuit_name=circuit_name,\
+                    n_qubits=n_qubits,verbose=False)
+    for i in range(10):
+        print('sample %d' %i)
+        circ_constructor.build_random_circuit()
+        # res = circ_sampler.execute_circuit()
+        # measure entropy of circuit
