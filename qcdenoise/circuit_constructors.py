@@ -12,6 +12,8 @@ class CircuitConstructor:
         self.n_qubits = n_qubits
         self.n_shots = n_shots
         self.verbose = verbose
+        # remove noise and error unitary stuff
+        
         self.callbacks = {'phase_amplitude_damping_error': cs.CircuitSampler.get_phase_amp_damp_error,
                     'amplitude_damping_error': cs.CircuitSampler.get_amp_damp_error}
         self.insert_unitary = False
@@ -137,8 +139,9 @@ class CircuitConstructor:
         ex (C-3): ['H','CNOT','H','CNOT','H','H'] = [{'gate':'H','qubit':0},{'gate':'CNOT','qubit':(0,1)},\
                                             {'gate':'H','qubit':1},{'gate':'CNOT',\
                                             'qubit':(1,2)},{'gate':'H','qubit':0},{'gate':'H','qubit':2}]
+        returns QIskit CircuitObj
         '''
-    
+        
         q_reg = qk.QuantumRegister(self.n_qubits)
         c_reg = qk.ClassicalRegister(self.n_qubits)
         circ = qk.QuantumCircuit(q_reg, c_reg)
@@ -164,10 +167,11 @@ class CircuitConstructor:
         """
         pass
 
-    def build_circuit(self):
+    def build_random_circuit(self):
         """build qiskit circuit from graph
             Reuse this for CircuitSampler()
         """
+        
         pass
 
     def execute_circuit(self):
