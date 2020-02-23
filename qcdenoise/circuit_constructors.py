@@ -154,10 +154,6 @@ class CircuitConstructor:
             elif gate_set[gdx]['gate']=='CNOT':
                 src,tgt=gate_set[gdx]['qubit']
                 circ.cx(q_reg[src],q_reg[tgt])
-                if self.insert_unitary and bool(np.random.choice(2)):
-                    label = 'unitary_{}_{}'.format(q_reg[src],q_reg[tgt])
-                    self.ops_labels.append(label)
-                    circ.unitary(self.unitary_op, [q_reg[src], q_reg[tgt]], label=label)
             elif gate_set[gdx]['gate']=='I':
                 print('identity gate is trivial')
         circ.measure(q_reg, c_reg) #pylint: disable=no-member
