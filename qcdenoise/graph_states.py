@@ -84,8 +84,28 @@ class GraphDB:
                 g_entry['V'] = len(G.nodes)
         return graph_db
 
+    def plot_graph(self, graph_number=[1]):
+        graph_number = graph_number if graph_number is not None else list(self.graph.keys())
+        if _plots:
+            plt.figure(figsize=(2,2))
+            for g_num in graph_number:
+                plt.clf()
+                G = self.graph[str(g_num)]
+                if _plots:
+                    options = {
+                            'with_labels': True,
+                            'node_color': 'red',
+                            'node_size': 175,
+                            'width': 2,
+                            'font_weight':'bold',
+                            'font_color': 'white',
+                            }
+                    nx.draw_circular(G, **options)
+                    plt.title('No. %d' % g_num, loc='right')
+                    plt.show()
+
     def test_graph_build(self, graph_number=1):
-        """Tests graph building from a graph_specs database by:
+        """Tests graph building. This is useful when testing a new GraphData object
            1. Building the graph
            2. Printing nodes, neighbors and weight values
            3. Plotting the built graph.     
