@@ -9,7 +9,7 @@ setup(
     author='Numan Laanait',
     author_email='laanaitn@ornl.gov',
     description='',
-    install_requires=['numpy', 'qiskit', 'torch'],
+    install_requires=['numpy', 'qiskit', 'torch', 'lmdb'],
     # test_suite='tests',
     python_requires='>=3.6',
     package_dir = {'qcdenoise': 'qcdenoise'},

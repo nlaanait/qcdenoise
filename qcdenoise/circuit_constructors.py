@@ -2,188 +2,49 @@ import numpy as np
 import qiskit as qk
 from datetime import datetime
 
+import .graph_states import GraphDB
+
+def partitions(n, start=2):
+    """Return all possible partitions of integer n
+    
+    Arguments:
+        n {int} -- integer
+    
+    Keyword Arguments:
+        start {int} -- starting position (default: {2})
+    
+    Yields:
+        tuple -- returns tuples of partitions
+    """
+    yield(n,)
+    for i in range(start, n//2 + 1):
+        for p in partition(n-i, i):
+             yield (i,) + p
+
+
 class CircuitConstructor:
-    def __init__(self,n_qubits= 2, block_tuple = (2,1), \
-                circuit_name='graph', n_shots=1024,\
-                verbose=True,save_to_file=False):
-        self.circuit_name = circuit_name
+    """Base class of constructing circuits
+    
+    Raises:
+        NotImplementedError: build_circuit() must be overriden
+        NotImplementedError: estimate_entanglement() must be overriden
+    """
+    def __init__(self,n_qubits= 2,
+                n_shots=1024,
+                verbose=True, save_to_file=False):
         self.n_qubits = n_qubits
-        self.blocks = block_tuple
         self.n_shots = n_shots
         self.verbose = verbose
         self.save_to_file = save_to_file
         self.runtime = datetime.now().strftime("%Y_%m_%d")
         self.statevec = None
-        
-    def _add_Hgate(self,qubit):
-        self.gate_list.append({'gate':'H','qubit':qubit})
-        return
+        self.circuit =  None
     
-    def _add_CNOT(self,src,tgt):
-        self.gate_list.append({'gate':'CNOT','qubits':(src,tgt)})
-        
-    def initialize_subgraphs(self):
-        """ Builds a set of interesting subgraphs.
-        """
-        pass 
-    def onequbit_circuit_sample():
-        """ randomly sample from the set of all one qubit subcircuits
-        that we are interested in 
-        """
-        onequbit_circuits={0:[{'gate':'I','qubits':0}],\
-                            1:[{'gate':'H','qubits':0}]}
-        return onequbit_circuits[np.random.choice(onequbit_circuits.keys())]
-        
-    def twoqubit_circuit_sample():
-        """ randomly sample from the set of all two qubit subcircuits
-        that we are interested in
-        
-        returns list of dictionaries that are gate set lists
-        """
-        twoqubit_circuits={\
-            0:[{'gate':'I','qubits':0},{'gate':'I','qubits':1}],\
-            1:[{'gate':'I','qubits':0},{'gate':'H','qubits':1}],\
-            2:[{'gate':'H','qubits':0},{'gate':'I','qubits':1}],\
-            3:[{'gate':'H','qubits':0},{'gate':'H','qubits':1}],\
-            4:[{'gate':'H','qubits':0},{'gate':'CNOT','qubits':(0,1)},{'gate':'H','qubits':1}],\
-            5:[{'gate':'H','qubits':1},{'gate':'CNOT','qubits':(1,0)},{'gate':'H','qubits':0}]
-            }
-        return twoqubit_circuits[np.random.choice(list(twoqubit_circuits.keys()))]
-    
-    def threequbit_circuit_sample():
-        threequbit_circuits={\
-        0:[{'gate':'I','qubits':0},{'gate':'I','qubits':1},{'gate':'I','qubits':2}],\
-        1:[{'gate':'I','qubits':0},{'gate':'I','qubits':1},{'gate':'H','qubits':2}],\
-        2:[{'gate':'I','qubits':0},{'gate':'H','qubits':1},{'gate':'I','qubits':2}],\
-        3:[{'gate':'H','qubits':0},{'gate':'I','qubits':1},{'gate':'I','qubits':2}],\
-        4:[{'gate':'H','qubits':0},{'gate':'I','qubits':1},{'gate':'H','qubits':2}],\
-        5:[{'gate':'H','qubits':0},{'gate':'H','qubits':1},{'gate':'I','qubits':2}],\
-        6:[{'gate':'H','qubits':0},{'gate':'I','qubits':1},{'gate':'H','qubits':2}],\
-        7:[{'gate':'H','qubits':0},{'gate':'H','qubits':1},{'gate':'H','qubits':2}],\
-        8:[{'gate':'H','qubits':0},{'gate':'CNOT','qubits':(0,1)},\
-                    {'gate':'H','qubits':1},{'gate':'CNOT','qubits':(0,2)},\
-                    {'gate':'H','qubits':2},{'gate':'H','qubits':0}],\
-        9:[{'gate':'H','qubits':0},{'gate':'CNOT','qubits':(0,1)},{'gate':'CNOT','qubits':(1,2)}]
-        }
-        return threequbit_circuits[np.random.choice(list(threequbit_circuits.keys()))]
-
-    def _graph_state_dict():
-        _2qubit=[{'gate'}]
-        return
-    def _random_graph_state(self):
-        '''
-        return gate set needed to construct a graph state on n-qubits
-        Configurations are hard-wired for 2,3,4,5,6,7 qubits
-        from Table V in arXiv:060296 (Hein et al.)
-        Returns
-        -------
-        list of dictionaries.
-
-        '''
-        graph_state_gates=[]
-        state = np.random.choice(range(self.n_qubits))
-        if self.n_qubits==2:
-            # construct star graph state (rooted tree at qubit 0)
-            n_idx=0
-            graph_state_gates.append({'gate':'H','qubits':n_idx})
-            graph_state_gates.append({'gate':'CNOT','qubits':(n_idx,n_idx+1)})
-            graph_state_gates.append({'gate':'H','qubits':n_idx+1})
-            n_idx+=1
-            while n_idx<(self.n_qubits-1):
-                graph_state_gates.append({'gate':'CNOT','qubits':(n_idx,n_idx+1)})
-                graph_state_gates.append({'gate':'H','qubits':n_idx+1})
-                n_idx+=1
-            graph_state_gates.append({'gate':'CNOT','qubits':(n_idx,0)})
-            graph_state_gates.append({'gate':'H','qubits':0})
-        elif self.n_qubits==3:
-            # construct linear graph state (CNOT chain)
-            n_idx=0
-            graph_state_gates.append({'gate':'H','qubits':n_idx})
-            graph_state_gates.append({'gate':'CNOT','qubits':(n_idx,n_idx+1)})
-            graph_state_gates.append({'gate':'H','qubits':n_idx+1})
-            n_idx+=1
-            while n_idx<(self.n_qubits-1):
-                graph_state_gates.append({'gate':'CNOT','qubits':(n_idx,n_idx+1)})
-                graph_state_gates.append({'gate':'H','qubits':n_idx+1})
-                n_idx+=1
-            graph_state_gates.append({'gate':'CNOT','qubits':(n_idx,0)})
-            graph_state_gates.append({'gate':'H','qubits':0})
-        else:
-            # placeholder for now - replace with random rewiring of star  graph
-            # remove single edge from [0,n-1] and replace with edge from [m,n-1]
-            pass
-        return graph_state_gates
-
-    def build_graph_sequence(self,index=1):
-        """Build the i-th graph state circuit
-        in the sequential rewiring of a star graph into a linear chain
-        """
-        graph_state_gates=[]
-        n_edges=self.n_qubits-1
-        # construct star graph state (rooted tree at qubit 0)
-        n_idx=1
-        graph_state_gates.append({'gate':'H','qubits':0})
-        graph_state_gates.append({'gate':'CNOT','qubits':(0,n_idx)})
-        graph_state_gates.append({'gate':'H','qubits':n_idx})
-        n_idx+=1
-        # connect up to <index> qubits to root qubit
-        while n_idx<(n_edges-index):
-            graph_state_gates.append({'gate':'CNOT','qubits':(0,n_idx+1)})
-            graph_state_gates.append({'gate':'H','qubits':n_idx+1})
-            n_idx+=1
-        while n_idx<=n_edges:
-            graph_state_gates.append({'gate':'CNOT','qubits':(n_idx,n_idx+1)})
-            graph_state_gates.append({'gate':'H','qubits':n_idx+1})
-        graph_state_gates.append({'gate':'CNOT','qubits':(n_idx,0)})
-        graph_state_gates.append({'gate':'H','qubits':0})
-           
-    def _build_from_gate_set(self,gate_set,statevec=True):
-        '''
-        This was adapted from the _build_GHZ() routine in circuit_sampler
-        So I assumed that the object would have similar class attributes
-        self.n_qubits, self.insert_unitary ... etc
-        first draft of building a circuit constructor from a list of gates
-        pass gate_set as a list of dictionaries (yes/no?  other?)
-        
-        [{'gate':'I' or 'H' or 'CNOT','qubits': single or tuple}]
-        ex: ['I','I','I','I'] = [{'gate':'I','qubit':0},{'gate':'I','qubit':1},\
-                                    {'gate':'I','qubit':2},{'gate':'I','qubit':3}]
-        ex (GHZ-3): ['H','CNOT','CNOT'] = [{'gate':'H','qubit':0},{'gate':'CNOT','qubit':(0,1)},\
-                                            {'gate':'CNOT','qubit':(1,2)}]
-        ex (C-3): ['H','CNOT','H','CNOT','H','H'] = [{'gate':'H','qubit':0},{'gate':'CNOT','qubit':(0,1)},\
-                                            {'gate':'H','qubit':1},{'gate':'CNOT',\
-                                            'qubit':(1,2)},{'gate':'H','qubit':0},{'gate':'H','qubit':2}]
-        returns QIskit CircuitObj
-        '''
-        
-        q_reg = qk.QuantumRegister(self.n_qubits)
-        c_reg = qk.ClassicalRegister(self.n_qubits)
-        circ = qk.QuantumCircuit(q_reg, c_reg)
-        for gdx in range(len(gate_set)):
-            if gate_set[gdx]['gate']=='H':
-                qbx=gate_set[gdx]['qubits']
-                circ.h(q_reg[qbx])
-            elif gate_set[gdx]['gate']=='CNOT':
-                src,tgt=gate_set[gdx]['qubits']
-                circ.cx(q_reg[src],q_reg[tgt])
-            elif gate_set[gdx]['gate']=='I':
-                print('identity gate is trivial')
-        if statevec:
-            return circ
-        else:
-            circ.measure(q_reg, c_reg) #pylint: disable=no-member
-            return circ
-
-    def build_random_circuit(self,statevec=True):
-        """build qiskit circuit from graph
-            Reuse this for CircuitSampler()
-        """
-        random_gate_set=self._graph_state()
-        self.circuit=self._build_from_gate_set(random_gate_set,statevec)
-        return 
+    def build_circuit(self):
+        raise NotImplementedError
     
     def save_circuit(self):
-        if self.save_to_file:
+        if self.save_to_file and self.circuit is not None:
             with open('circuit_'+self.runtime+'.txt','w') as fp:
                 for line in self.circuit.qasm():
                     fp.write(line)
@@ -192,9 +53,9 @@ class CircuitConstructor:
     def execute_circuit(self):
         """execute circuit with state_vector sim 
         """ 
-        self.statevec=qk.execute(circ_constructor.circuit,\
+        self.statevec=qk.execute(self.circuit,\
                                  backend=qk.Aer.get_backend('statevector_simulator'),
-                                 shots=10000).result().get_statevector()
+                                 shots=self.n_shots).result().get_statevector()
         return
 
     def estimate_entanglement(self):
@@ -203,11 +64,141 @@ class CircuitConstructor:
         if circuit was prepared as GHZ state then assume maximally entangled
         if circuit was prepared as random graph state then use witnesses
         """
-        if self.circuit_name=='GHZ':
-            return 1.0
+       raise NotImplementedError
+
+
+class GraphCircuit(CircuitConstructor):
+    """Class to construct circuits from graph states
+    
+    Arguments:
+        CircuitConstructor {Parent class} -- abstract class
+    """
+    def __init__(self, graph_db, gate_type="Controlled_Phase", smallest_subgraph=2, 
+                       largest_subgraph=None, **kwargs):
+        super(GraphCircuit, self).__init__(**kwargs)
+        if isinstance(graph_db, GraphDB):
+            self.graph_db = graph_db
+        else
+            self.graph_db = GraphDB()
+        self.state_vec = True
+        self.gate_type = gate_type
+        self.all_graphs = None
+        self.largest_subgraph = largest_subgraph
+        self.smallest_subgraph = smallest_subgraph
+
+    def generate_all_subgraphs(self):
+        combs = list(set(partitions(target_qubits, start=smallest_subgraph)))
+        sorted_dict = self.get_sorted_db()
+        if largest_subgraph is None:
+            for key, itm in sorted_dict.items():
+                if len(itm) > 1:
+                    largest_subgraph = key
+        for (itm, comb) in enumerate(combs):
+            if any([itm > largest_subgraph for itm in comb]):
+                combs.pop(itm)
+        sorted_dict = get_sorted_db(graph_db)
+        graphs=[]
+        for comb in combs:
+            print('comb', comb)
+            sub_graphs = []
+            comb = list(comb)
+            if len(comb) > 1:
+                idx = 0
+                while idx < len(comb):
+                    all_graphs = sorted_dict[comb[idx]]
+                    if len(all_graphs) < 1:
+                        break
+                    graph_idx = random.randint(0, len(all_graphs)-1)
+                    sub_graphs.append(all_graphs[graph_idx])
+                    idx += 1
+    #             print('comb={}, subgraphs={}'.format(comb, sub_graphs))
+            else:
+                all_graphs = sorted_dict[comb[0]]
+                if len(all_graphs) > 0:
+                    graph_idx = random.randint(0, len(all_graphs)-1)
+                    sub_graphs.append(all_graphs[graph_idx])
+    #                 print('comb={}, subgraphs={}'.format(comb, sub_graphs))
+            graphs.append(sub_graphs)
+        self.all_graphs = graphs
+
+    def combine_subgraphs(self, sub_graphs):
+        union_graph = nx.DiGraph()
+        for sub_g in sub_graphs:
+            union_nodes = len(union_graph.nodes)
+            if union_nodes > 1:
+                first_node = random.randint(0, union_nodes - 1)
+                offset = len(sub_g.nodes)
+                second_node = random.randint(union_nodes, offset + union_nodes - 1)    
+            union_graph = nx.disjoint_union(union_graph, sub_g)
+            if union_nodes > 1:
+                union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)])
+        return union_graph
+
+    def build_circuit(self):
+        if self.gate_type == "Controlled_Phase"
+            self._build_controlled_phase_gate()
+
+
+    def _build_controlled_phase_gate(self, graph):
+        q_reg = qiskit.QuantumRegister(self.n_qubits)
+        c_reg = qiskit.ClassicalRegister(self.n_qubits)
+        self.circuit = qiskit.QuantumCircuit(q_reg, c_reg)
+        for node, ngbrs in graph.adjacency():
+            for ngbr, edge_attr in ngbrs.items():
+                self.circuit.h(node)
+                self.circuit.cx(node, ngbr)
+                self.circuit.h(node)
+                self.print_verbose("Adding Controlled Phase Gate between Node:{} and Neighbor:{}"\
+                    .format(gate_type, node, ngbr)) 
+        if self.statevec is None:
+            return 
+        self.circuit.measure(q_reg, c_reg)
+
+    def combine_subgraphs(self, smallest_subgraph=2, largest_subgraph=None):
+        combs = list(set(partitions(self.n_qubits, start=smallest_subgraph)))
+        sorted_dict = get_sorted_db(graph_db)
+        if largest_subgraph is None:
+            for key, itm in sorted_dict.items():
+                if len(itm) > 1:
+                    largest_subgraph = key
+        for (itm, comb) in enumerate(combs):
+            if any([itm > largest_subgraph for itm in comb]):
+                combs.pop(itm)
+        comb = list(combs[random.randint(0, len(combs) - 1)])
+        sub_graphs = []
+        if len(comb) > 1:
+            idx = 0
+            while idx < len(comb):
+                all_subgraphs = sorted_dict[comb[idx]]
+                graph_idx = random.randint(0, len(all_subgraphs) - 1)
+                sub_graphs.append(all_subgraphs[graph_idx])
+                idx += 1
         else:
-            return 0.0
-        pass
+            all_subgraphs = sorted_dict[comb[0]]
+            graph_idx = random.randint(0, len(all_graphs) - 1)
+            sub_graphs.append(all_graphs[graph_idx])
+        
+
+        union_graph = nx.DiGraph()
+        for sub_g in sub_graphs:
+            union_nodes = len(union_graph.nodes)
+            if union_nodes > 1:
+                first_node = random.randint(0, union_nodes - 1)
+                offset = len(sub_g.nodes)
+                second_node = random.randint(union_nodes, offset + union_nodes - 1)    
+            union_graph = nx.disjoint_union(union_graph, sub_g)
+            if union_nodes > 1:
+                union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)])
+        return union_graph, sub_graphs
+
+    def get_sorted_db(self):
+        sorted_dict = dict([(i, []) for i in range(1,len(self.graph_db.keys()))])
+        for key, itm in self.graph_db.items():
+            if itm["G"] is not None:
+                sorted_key = len(itm["G"].nodes)
+                sorted_dict[sorted_key].append(itm["G"])
+        return sorted_dict
+     
     
 if __name__ == "__main__":
     # Build example set of random circuits

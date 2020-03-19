@@ -90,7 +90,7 @@ class GraphDB:
             plt.figure(figsize=(2,2))
             for g_num in graph_number:
                 plt.clf()
-                G = self.graph[str(g_num)]
+                G = self.graph[str(g_num)]['G']
                 if _plots:
                     options = {
                             'with_labels': True,
