@@ -1,8 +1,17 @@
+import random
+from datetime import datetime
+from time import sleep
+import warnings
+
+import networkx as nx
 import numpy as np
 import qiskit as qk
-from datetime import datetime
 
-import .graph_states import GraphDB
+from .graph_states import GraphDB, nx_plot_options, _plots
+
+global seed
+seed = 1234
+np.random.seed(seed)
 
 def partitions(n, start=2):
     """Return all possible partitions of integer n
@@ -18,20 +27,19 @@ def partitions(n, start=2):
     """
     yield(n,)
     for i in range(start, n//2 + 1):
-        for p in partition(n-i, i):
+        for p in partitions(n-i, i):
              yield (i,) + p
 
 
 class CircuitConstructor:
-    """Base class of constructing circuits
+    """Parent class of constructing circuits
     
     Raises:
-        NotImplementedError: build_circuit() must be overriden
-        NotImplementedError: estimate_entanglement() must be overriden
+        NotImplementedError: build_circuit() must be overriden by child class
+        NotImplementedError: estimate_entanglement() must be overriden by child class
     """
-    def __init__(self,n_qubits= 2,
-                n_shots=1024,
-                verbose=True, save_to_file=False):
+    def __init__(self,n_qubits= 2, n_shots=1024, verbose=False, 
+                 state_simulation=True, save_to_file=False):
         self.n_qubits = n_qubits
         self.n_shots = n_shots
         self.verbose = verbose
@@ -39,7 +47,13 @@ class CircuitConstructor:
         self.runtime = datetime.now().strftime("%Y_%m_%d")
         self.statevec = None
         self.circuit =  None
+        self.state_sim = state_simulation
+        self.counts = None
     
+    def print_verbose(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, **kwargs)
+
     def build_circuit(self):
         raise NotImplementedError
     
@@ -53,9 +67,14 @@ class CircuitConstructor:
     def execute_circuit(self):
         """execute circuit with state_vector sim 
         """ 
-        self.statevec=qk.execute(self.circuit,\
-                                 backend=qk.Aer.get_backend('statevector_simulator'),
-                                 shots=self.n_shots).result().get_statevector()
+        if self.state_sim:
+            self.statevec=qk.execute(self.circuit,\
+                                    backend=qk.Aer.get_backend('statevector_simulator'),
+                                    shots=self.n_shots).result().get_statevector()
+        else:
+            self.counts = qk.execute(self.circuit, 
+                                    backend=qk.Aer.get_backend('qasm_simulator'), 
+                                    seed_simulator=seed, shots=self.n_shots).result().get_counts()
         return
 
     def estimate_entanglement(self):
@@ -64,7 +83,7 @@ class CircuitConstructor:
         if circuit was prepared as GHZ state then assume maximally entangled
         if circuit was prepared as random graph state then use witnesses
         """
-       raise NotImplementedError
+        raise NotImplementedError
 
 
 class GraphCircuit(CircuitConstructor):
@@ -73,53 +92,38 @@ class GraphCircuit(CircuitConstructor):
     Arguments:
         CircuitConstructor {Parent class} -- abstract class
     """
-    def __init__(self, graph_db, gate_type="Controlled_Phase", smallest_subgraph=2, 
+    def __init__(self, graph_db=GraphDB(), gate_type="Controlled_Phase", smallest_subgraph=2, 
                        largest_subgraph=None, **kwargs):
         super(GraphCircuit, self).__init__(**kwargs)
         if isinstance(graph_db, GraphDB):
             self.graph_db = graph_db
-        else
-            self.graph_db = GraphDB()
         self.state_vec = True
         self.gate_type = gate_type
-        self.all_graphs = None
-        self.largest_subgraph = largest_subgraph
-        self.smallest_subgraph = smallest_subgraph
+        self.all_graphs = self.get_sorted_db()
+        self.largest_subgraph = self.check_largest(largest_subgraph)
+        self.smallest_subgraph = max(2, smallest_subgraph)
+        self.graph_combs = self.generate_all_subgraphs()
 
+    def check_largest(self, val):
+        for key, itm in self.all_graphs.items():
+                if len(itm) != 0:
+                    max_subgraph = key 
+        if val is None:
+            return max_subgraph 
+        if val > max_subgraph:
+            warnings.warn("The largest possible subgraph in the database has %s nodes" %max_subgraph)
+            warnings.warn("Resetting largest possible subgraph: %s --> %s" %(val, max_subgraph))
+            return max_subgraph
+        return val
+            
     def generate_all_subgraphs(self):
-        combs = list(set(partitions(target_qubits, start=smallest_subgraph)))
-        sorted_dict = self.get_sorted_db()
-        if largest_subgraph is None:
-            for key, itm in sorted_dict.items():
-                if len(itm) > 1:
-                    largest_subgraph = key
+        combs = list(set(partitions(self.n_qubits, start=self.smallest_subgraph)))
         for (itm, comb) in enumerate(combs):
-            if any([itm > largest_subgraph for itm in comb]):
+            if any([itm > self.largest_subgraph for itm in comb]):
                 combs.pop(itm)
-        sorted_dict = get_sorted_db(graph_db)
-        graphs=[]
-        for comb in combs:
-            print('comb', comb)
-            sub_graphs = []
-            comb = list(comb)
-            if len(comb) > 1:
-                idx = 0
-                while idx < len(comb):
-                    all_graphs = sorted_dict[comb[idx]]
-                    if len(all_graphs) < 1:
-                        break
-                    graph_idx = random.randint(0, len(all_graphs)-1)
-                    sub_graphs.append(all_graphs[graph_idx])
-                    idx += 1
-    #             print('comb={}, subgraphs={}'.format(comb, sub_graphs))
-            else:
-                all_graphs = sorted_dict[comb[0]]
-                if len(all_graphs) > 0:
-                    graph_idx = random.randint(0, len(all_graphs)-1)
-                    sub_graphs.append(all_graphs[graph_idx])
-    #                 print('comb={}, subgraphs={}'.format(comb, sub_graphs))
-            graphs.append(sub_graphs)
-        self.all_graphs = graphs
+        if len(combs) == 0:
+            raise ValueError("Empty list of subgraph combinations. Circuit cannot be constructed as specified.")
+        return combs
 
     def combine_subgraphs(self, sub_graphs):
         union_graph = nx.DiGraph()
@@ -129,71 +133,53 @@ class GraphCircuit(CircuitConstructor):
                 first_node = random.randint(0, union_nodes - 1)
                 offset = len(sub_g.nodes)
                 second_node = random.randint(union_nodes, offset + union_nodes - 1)    
-            union_graph = nx.disjoint_union(union_graph, sub_g)
-            if union_nodes > 1:
-                union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)])
+                union_graph = nx.disjoint_union(union_graph, sub_g)
+                union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)]) 
+            else:
+                union_graph = nx.disjoint_union(union_graph, sub_g)
         return union_graph
 
-    def build_circuit(self):
-        if self.gate_type == "Controlled_Phase"
-            self._build_controlled_phase_gate()
+    def pick_subgraphs(self):
+        comb_idx = random.randint(0, len(self.graph_combs) - 1)
+        comb = self.graph_combs[comb_idx]
+        self.print_verbose("Configuration with {} Subgraphs with # nodes:{}".format(len(comb), comb))
+        sub_graphs = []
+        for num_nodes in comb:
+            sub_g = self.all_graphs[num_nodes]
+            idx = random.randint(0, len(sub_g) - 1)
+            sub_graphs.append(sub_g[idx])
+        return sub_graphs
 
+    def build_circuit(self, graph_plot=False):
+        # 1. Pick a random combination of subgraphs
+        sub_graphs = self.pick_subgraphs()
+        # 2. Combine subgraphs into a single circuit graph
+        circuit_graph = self.combine_subgraphs(sub_graphs)
+        if graph_plot and _plots:
+            nx.draw_circular(circuit_graph, **nx_plot_options)
+        # 3. Build a circuit from the graph state
+        if self.gate_type == "Controlled_Phase":
+            self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
+            self._build_controlled_phase_gate(circuit_graph)
 
     def _build_controlled_phase_gate(self, graph):
-        q_reg = qiskit.QuantumRegister(self.n_qubits)
-        c_reg = qiskit.ClassicalRegister(self.n_qubits)
-        self.circuit = qiskit.QuantumCircuit(q_reg, c_reg)
+        q_reg = qk.QuantumRegister(self.n_qubits)
+        c_reg = qk.ClassicalRegister(self.n_qubits)
+        circ = qk.QuantumCircuit(q_reg, c_reg)
         for node, ngbrs in graph.adjacency():
-            for ngbr, edge_attr in ngbrs.items():
-                self.circuit.h(node)
-                self.circuit.cx(node, ngbr)
-                self.circuit.h(node)
-                self.print_verbose("Adding Controlled Phase Gate between Node:{} and Neighbor:{}"\
-                    .format(gate_type, node, ngbr)) 
-        if self.statevec is None:
-            return 
-        self.circuit.measure(q_reg, c_reg)
-
-    def combine_subgraphs(self, smallest_subgraph=2, largest_subgraph=None):
-        combs = list(set(partitions(self.n_qubits, start=smallest_subgraph)))
-        sorted_dict = get_sorted_db(graph_db)
-        if largest_subgraph is None:
-            for key, itm in sorted_dict.items():
-                if len(itm) > 1:
-                    largest_subgraph = key
-        for (itm, comb) in enumerate(combs):
-            if any([itm > largest_subgraph for itm in comb]):
-                combs.pop(itm)
-        comb = list(combs[random.randint(0, len(combs) - 1)])
-        sub_graphs = []
-        if len(comb) > 1:
-            idx = 0
-            while idx < len(comb):
-                all_subgraphs = sorted_dict[comb[idx]]
-                graph_idx = random.randint(0, len(all_subgraphs) - 1)
-                sub_graphs.append(all_subgraphs[graph_idx])
-                idx += 1
-        else:
-            all_subgraphs = sorted_dict[comb[0]]
-            graph_idx = random.randint(0, len(all_graphs) - 1)
-            sub_graphs.append(all_graphs[graph_idx])
-        
-
-        union_graph = nx.DiGraph()
-        for sub_g in sub_graphs:
-            union_nodes = len(union_graph.nodes)
-            if union_nodes > 1:
-                first_node = random.randint(0, union_nodes - 1)
-                offset = len(sub_g.nodes)
-                second_node = random.randint(union_nodes, offset + union_nodes - 1)    
-            union_graph = nx.disjoint_union(union_graph, sub_g)
-            if union_nodes > 1:
-                union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)])
-        return union_graph, sub_graphs
+            for ngbr, _ in ngbrs.items():
+                circ.h(node)
+                circ.cx(node, ngbr)
+                circ.h(node)
+        if self.state_sim:
+            self.circuit = circ
+            return
+        circ.measure(q_reg, c_reg)
+        self.circuit = circ
 
     def get_sorted_db(self):
         sorted_dict = dict([(i, []) for i in range(1,len(self.graph_db.keys()))])
-        for key, itm in self.graph_db.items():
+        for _, itm in self.graph_db.items():
             if itm["G"] is not None:
                 sorted_key = len(itm["G"].nodes)
                 sorted_dict[sorted_key].append(itm["G"])
@@ -202,13 +188,6 @@ class GraphCircuit(CircuitConstructor):
     
 if __name__ == "__main__":
     # Build example set of random circuits
-    circuit_name = 'graph'
-    n_qubits = 5
-    circ_constructor = CircuitConstructor(circuit_name=circuit_name,\
-                    n_qubits=n_qubits,verbose=False,save_to_file=True)
-    for i in range(1):
-        print('sample %d' %i)
-        circ_constructor.build_random_circuit()
-        circ_constructor.save_circuit()
-        # res = circ_sampler.execute_circuit()
-        # measure entropy of circuit
+    circ_builder = GraphCircuit()
+    for _ in range(20):
+        circ_builder.build_circuit()

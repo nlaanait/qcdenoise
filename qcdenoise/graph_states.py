@@ -13,6 +13,14 @@ def offset(l):
     l = [(edge[0]-1, edge[1]-1, edge[-1]) for edge in l]
     return l
 
+nx_plot_options = {
+            'with_labels': True,
+            'node_color': 'red',
+            'node_size': 175,
+            'width': 2,
+            'font_weight':'bold',
+            'font_color': 'white',
+            }
 
 class GraphData:
     """The keys correspond to the graph numbers in Table V in arXiv:060296 (Hein et al.)
@@ -75,7 +83,7 @@ class GraphDB:
     def _build_graphDB(self):
         graph_db= dict([('%d' %d, {'G':None, 'V':None, 'LUclass':None, '2Color':None}) 
                             for d in range(1,len(self.graph_data.keys()) + 1)])
-        for (g_num, g_entry), (_, g_data) in zip(graph_db.items(), self.graph_data.items()):
+        for (_, g_entry), (_, g_data) in zip(graph_db.items(), self.graph_data.items()):
             if g_data:
                 g_data = offset(g_data)
                 G = nx.DiGraph()
@@ -92,15 +100,7 @@ class GraphDB:
                 plt.clf()
                 G = self.graph[str(g_num)]['G']
                 if _plots:
-                    options = {
-                            'with_labels': True,
-                            'node_color': 'red',
-                            'node_size': 175,
-                            'width': 2,
-                            'font_weight':'bold',
-                            'font_color': 'white',
-                            }
-                    nx.draw_circular(G, **options)
+                    nx.draw_circular(G, **nx_plot_options)
                     plt.title('No. %d' % g_num, loc='right')
                     plt.show()
 
@@ -131,17 +131,16 @@ class GraphDB:
                         print("Node:{}, Neighbor:{}, Weight:{}".format(node, ngbr, edge_attr["weight"]))
                 # plot
                 if _plots:
-                    options = {
-                    'with_labels': True,
-                    'node_color': 'red',
-                    'node_size': 175,
-                    'width': 2,
-                    'font_weight':'bold',
-                    'font_color': 'white',
-                    }
-                    nx.draw_circular(G, **options)
+                    nx.draw_circular(G, **nx_plot_options)
                     plt.title('No. %s' % g_num, loc='right')
                     plt.show()
     
+    def __getattr__(self, keys):
+        return self.graph.keys
+    
+    def __getattr__(self, items):
+        return self.graph.items
 
+    # def __getattribute__(self, name):
+    #     return GraphDB
                             
