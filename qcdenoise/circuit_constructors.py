@@ -1,13 +1,14 @@
 import random
+import warnings
 from datetime import datetime
 from time import sleep
-import warnings
 
 import networkx as nx
 import numpy as np
 import qiskit as qk
+from qiskit.quantum_info.operators import Operator
 
-from .graph_states import GraphDB, nx_plot_options, _plots
+from .graph_states import GraphDB, _plots, nx_plot_options
 
 global seed
 seed = 1234
@@ -103,6 +104,7 @@ class GraphCircuit(CircuitConstructor):
         self.largest_subgraph = self.check_largest(largest_subgraph)
         self.smallest_subgraph = max(2, smallest_subgraph)
         self.graph_combs = self.generate_all_subgraphs()
+        self.ops_labels = None
 
     def check_largest(self, val):
         for key, itm in self.all_graphs.items():
@@ -161,16 +163,46 @@ class GraphCircuit(CircuitConstructor):
         if self.gate_type == "Controlled_Phase":
             self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
             self._build_controlled_phase_gate(circuit_graph)
+        elif self.gate_type == "SControlled_Phase": # same as controlled phase gate but w/ Stochastic unitary gates after CNOT
+            self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
+            self._build_Scontrolled_phase_gate(circuit_graph)
+
 
     def _build_controlled_phase_gate(self, graph):
         q_reg = qk.QuantumRegister(self.n_qubits)
         c_reg = qk.ClassicalRegister(self.n_qubits)
         circ = qk.QuantumCircuit(q_reg, c_reg)
+        gate_pairs = []
         for node, ngbrs in graph.adjacency():
             for ngbr, _ in ngbrs.items():
                 circ.h(node)
                 circ.cx(node, ngbr)
                 circ.h(node)
+                gate_pairs.append([node, ngbr])
+        self.gate_pairs = gate_pairs
+        if self.state_sim:
+            self.circuit = circ
+            return
+        circ.measure(q_reg, c_reg)
+        self.circuit = circ
+
+    def _build_Scontrolled_phase_gate(self, graph):
+        unitary_op = Operator(np.identity(4))
+        q_reg = qk.QuantumRegister(self.n_qubits)
+        c_reg = qk.ClassicalRegister(self.n_qubits)
+        circ = qk.QuantumCircuit(q_reg, c_reg)
+        ops_labels = []
+        for node, ngbrs in graph.adjacency():
+            for ngbr, _ in ngbrs.items():
+                circ.h(node)
+                circ.cx(node, ngbr)
+                if bool(np.random.choice(2)):
+                    label = 'unitary_{}_{}'.format(node, ngbrs)
+                    ops_labels.append(label)
+                    circ.unitary(unitary_op, [node, ngbr], label=label)
+                circ.h(node)
+                ops_labels.append([node, ngbr])
+        self.ops_labels = ops_labels
         if self.state_sim:
             self.circuit = circ
             return
