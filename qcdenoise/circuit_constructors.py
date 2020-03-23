@@ -4,6 +4,7 @@ from datetime import datetime
 from time import sleep
 
 import networkx as nx
+from networkx.algorithms.approximation import vertex_cover
 import numpy as np
 import qiskit as qk
 from qiskit.quantum_info.operators import Operator
@@ -101,6 +102,7 @@ class GraphCircuit(CircuitConstructor):
         self.ops_labels = None
         self.stochastic = stochastic
         self.circuit_name = "GraphState"
+        self.circuit_graph = None
 
     def check_largest(self, val):
         for key, itm in self.all_graphs.items():
@@ -148,14 +150,27 @@ class GraphCircuit(CircuitConstructor):
             sub_graphs.append(sub_g[idx])
         return sub_graphs
 
-    def build_circuit(self, graph_plot=False):
-        # 1. Pick a random combination of subgraphs
-        sub_graphs = self.pick_subgraphs()
-        # 2. Combine subgraphs into a single circuit graph
-        circuit_graph = self.combine_subgraphs(sub_graphs)
+    def build_circuit(self, graph_plot=False, min_vertex_cover=1, max_itr=10):
+        itr = 0
+        while True:
+            # 1. Pick a random combination of subgraphs
+            sub_graphs = self.pick_subgraphs()
+            # 2. Combine subgraphs into a single circuit graph
+            circuit_graph = self.combine_subgraphs(sub_graphs)
+            # 3. Screen based on size of minimum vertex cover
+            min_cover = vertex_cover.min_weighted_vertex_cover(circuit_graph, weight="weight")
+            min_cover = len(min_cover) // 2 ##FIXME: only valid when weights of all nodes are 1
+            # Steps 1-3 are repeated (up to `max_itr`) to find a graph with a minimum vertex cover >=`min_vertex_cover` 
+            if min_cover >= min_vertex_cover:
+                break
+            elif itr > max_itr:
+                warnings.warn("Returned graph state does not satisfy min_vertex_cover criterion")
+                break
+            itr += 1
+        self.circuit_graph = circuit_graph
         if graph_plot and _plots:
             nx.draw_circular(circuit_graph, **nx_plot_options)
-        # 3. Build a circuit from the graph state
+        # Build a circuit from the graph state
         if self.gate_type == "Controlled_Phase":
             if self.stochastic:
                 self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
@@ -165,20 +180,20 @@ class GraphCircuit(CircuitConstructor):
 
     def _build_controlled_phase_gate(self, graph):
         unitary_op = Operator(np.identity(4))
-        ops_labels = []
         q_reg = qk.QuantumRegister(self.n_qubits)
         c_reg = qk.ClassicalRegister(self.n_qubits)
         circ = qk.QuantumCircuit(q_reg, c_reg)
+        if self.stochastic: ops_labels = []
         for node, ngbrs in graph.adjacency():
             for ngbr, _ in ngbrs.items():
                 circ.h(node)
                 circ.cx(node, ngbr)
-                if bool(np.random.choice(2)):
+                if bool(np.random.choice(2)) and self.stochastic:
                     label = 'unitary_{}_{}'.format(node, ngbr)
                     ops_labels.append(label)
                     circ.unitary(unitary_op, [node, ngbr], label=label)
                 circ.h(node)
-        self.ops_labels = ops_labels
+        if self.stochastic: self.ops_labels = ops_labels
         if self.state_sim:
             self.circuit = circ
             return

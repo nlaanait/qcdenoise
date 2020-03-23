@@ -101,7 +101,7 @@ class GraphDB:
                 G = self.graph[str(g_num)]['G']
                 if _plots:
                     nx.draw_circular(G, **nx_plot_options)
-                    plt.title('No. %d' % g_num, loc='right')
+                    plt.title('No. %s' % g_num, loc='right')
                     plt.show()
 
     def test_graph_build(self, graph_number=1):
@@ -134,6 +134,9 @@ class GraphDB:
                     nx.draw_circular(G, **nx_plot_options)
                     plt.title('No. %s' % g_num, loc='right')
                     plt.show()
+
+    def __getitem__(self, key):
+        return self.graph[key]
     
     def __getattr__(self, keys):
         return self.graph.keys
