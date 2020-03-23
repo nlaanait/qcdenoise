@@ -132,11 +132,14 @@ class GraphCircuit(CircuitConstructor):
         for sub_g in sub_graphs:
             union_nodes = len(union_graph.nodes)
             if union_nodes > 1:
-                first_node = random.randint(0, union_nodes - 1)
+                first_node = random.randint(0, union_graph.order() - 1)
                 offset = len(sub_g.nodes)
-                second_node = random.randint(union_nodes, offset + union_nodes - 1)    
+                second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1,sub_g.order()) 
+                #second_node = random.randint(union_nodes, offset + union_nodes - 1)    
                 union_graph = nx.disjoint_union(union_graph, sub_g)
-                union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)]) 
+                #union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)]) 
+                for idx in second_nodes:
+                    union_graph.add_weighted_edges_from([(first_node, idx, 1.0)])
             else:
                 union_graph = nx.disjoint_union(union_graph, sub_g)
         return union_graph
