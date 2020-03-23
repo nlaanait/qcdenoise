@@ -141,6 +141,3 @@ class GraphDB:
     def __getattr__(self, items):
         return self.graph.items
 
-    # def __getattribute__(self, name):
-    #     return GraphDB
-                            

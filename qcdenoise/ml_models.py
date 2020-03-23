@@ -92,6 +92,7 @@ class DenseModel(nn.Module):
         x = self.softmax(x)
         return x
 
+
 class AdjTModel(nn.Module):
   def __init__(self, inputs_dim=None, targets_dim=None, encodings_dim=None, combine_mode='Add'):
     super(AdjTModel, self).__init__()

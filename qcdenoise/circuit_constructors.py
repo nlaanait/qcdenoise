@@ -39,8 +39,9 @@ class CircuitConstructor:
         NotImplementedError: build_circuit() must be overriden by child class
         NotImplementedError: estimate_entanglement() must be overriden by child class
     """
-    def __init__(self,n_qubits= 2, n_shots=1024, verbose=False, 
+    def __init__(self,n_qubits=2, n_shots=1024, verbose=False, 
                  state_simulation=True, save_to_file=False):
+        assert n_qubits >= 2, "# of qubits must be 2 or larger"
         self.n_qubits = n_qubits
         self.n_shots = n_shots
         self.verbose = verbose
@@ -49,7 +50,6 @@ class CircuitConstructor:
         self.statevec = None
         self.circuit =  None
         self.state_sim = state_simulation
-        self.counts = None
     
     def print_verbose(self, *args, **kwargs):
         if self.verbose:
@@ -68,14 +68,9 @@ class CircuitConstructor:
     def execute_circuit(self):
         """execute circuit with state_vector sim 
         """ 
-        if self.state_sim:
-            self.statevec=qk.execute(self.circuit,\
-                                    backend=qk.Aer.get_backend('statevector_simulator'),
-                                    shots=self.n_shots).result().get_statevector()
-        else:
-            self.counts = qk.execute(self.circuit, 
-                                    backend=qk.Aer.get_backend('qasm_simulator'), 
-                                    seed_simulator=seed, shots=self.n_shots).result().get_counts()
+        self.statevec=qk.execute(self.circuit,\
+                                backend=qk.Aer.get_backend('statevector_simulator'),
+                                shots=self.n_shots).result().get_statevector()
         return
 
     def estimate_entanglement(self):
@@ -93,7 +88,7 @@ class GraphCircuit(CircuitConstructor):
     Arguments:
         CircuitConstructor {Parent class} -- abstract class
     """
-    def __init__(self, graph_db=GraphDB(), gate_type="Controlled_Phase", smallest_subgraph=2, 
+    def __init__(self, graph_db=GraphDB(), gate_type="Controlled_Phase", stochastic=True, smallest_subgraph=2, 
                        largest_subgraph=None, **kwargs):
         super(GraphCircuit, self).__init__(**kwargs)
         if isinstance(graph_db, GraphDB):
@@ -105,6 +100,8 @@ class GraphCircuit(CircuitConstructor):
         self.smallest_subgraph = max(2, smallest_subgraph)
         self.graph_combs = self.generate_all_subgraphs()
         self.ops_labels = None
+        self.stochastic = stochastic
+        self.circuit_name = "GraphState"
 
     def check_largest(self, val):
         for key, itm in self.all_graphs.items():
@@ -112,7 +109,7 @@ class GraphCircuit(CircuitConstructor):
                     max_subgraph = key 
         if val is None:
             return max_subgraph 
-        if val > max_subgraph:
+        elif val > max_subgraph:
             warnings.warn("The largest possible subgraph in the database has %s nodes" %max_subgraph)
             warnings.warn("Resetting largest possible subgraph: %s --> %s" %(val, max_subgraph))
             return max_subgraph
@@ -161,47 +158,27 @@ class GraphCircuit(CircuitConstructor):
             nx.draw_circular(circuit_graph, **nx_plot_options)
         # 3. Build a circuit from the graph state
         if self.gate_type == "Controlled_Phase":
-            self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
+            if self.stochastic:
+                self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
+            else:
+                self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
             self._build_controlled_phase_gate(circuit_graph)
-        elif self.gate_type == "SControlled_Phase": # same as controlled phase gate but w/ Stochastic unitary gates after CNOT
-            self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
-            self._build_Scontrolled_phase_gate(circuit_graph)
-
 
     def _build_controlled_phase_gate(self, graph):
-        q_reg = qk.QuantumRegister(self.n_qubits)
-        c_reg = qk.ClassicalRegister(self.n_qubits)
-        circ = qk.QuantumCircuit(q_reg, c_reg)
-        gate_pairs = []
-        for node, ngbrs in graph.adjacency():
-            for ngbr, _ in ngbrs.items():
-                circ.h(node)
-                circ.cx(node, ngbr)
-                circ.h(node)
-                gate_pairs.append([node, ngbr])
-        self.gate_pairs = gate_pairs
-        if self.state_sim:
-            self.circuit = circ
-            return
-        circ.measure(q_reg, c_reg)
-        self.circuit = circ
-
-    def _build_Scontrolled_phase_gate(self, graph):
         unitary_op = Operator(np.identity(4))
+        ops_labels = []
         q_reg = qk.QuantumRegister(self.n_qubits)
         c_reg = qk.ClassicalRegister(self.n_qubits)
         circ = qk.QuantumCircuit(q_reg, c_reg)
-        ops_labels = []
         for node, ngbrs in graph.adjacency():
             for ngbr, _ in ngbrs.items():
                 circ.h(node)
                 circ.cx(node, ngbr)
                 if bool(np.random.choice(2)):
-                    label = 'unitary_{}_{}'.format(node, ngbrs)
+                    label = 'unitary_{}_{}'.format(node, ngbr)
                     ops_labels.append(label)
                     circ.unitary(unitary_op, [node, ngbr], label=label)
                 circ.h(node)
-                ops_labels.append([node, ngbr])
         self.ops_labels = ops_labels
         if self.state_sim:
             self.circuit = circ
@@ -217,9 +194,75 @@ class GraphCircuit(CircuitConstructor):
                 sorted_dict[sorted_key].append(itm["G"])
         return sorted_dict
      
+
+class GHZCircuit(CircuitConstructor):
+    def __init__(self, stochastic=True, **kwargs):
+        super(GHZCircuit, self).__init__(**kwargs)
+        self.ops_labels = None
+        self.stochastic = stochastic
+        self.circuit_name = "GHZ"
+
+    def build_circuit(self):
+        unitary_op = Operator(np.identity(4))
+        q_reg = qk.QuantumRegister(self.n_qubits)
+        c_reg = qk.ClassicalRegister(self.n_qubits)
+        circ = qk.QuantumCircuit(q_reg, c_reg)
+        ops_labels = []
+        circ.h(0) #pylint: disable=no-member
+        self.ops_labels = []
+        for q in range(self.n_qubits-1):
+            circ.cx(q, q+1) #pylint: disable=no-member
+            if self.stochastic and bool(np.random.choice(2)):
+                label = 'unitary_{}_{}'.format(q,q+1)
+                ops_labels.append(label)
+                circ.unitary(unitary_op, [q, q+1], label=label) #pylint: disable=no-member
+        self.ops_labels = ops_labels
+        if self.state_sim:
+            self.circuit = circ
+            return
+        circ.measure(q_reg, c_reg) #pylint: disable=no-member
+        self.circuit = circ
+
+
+class UCCSDCircuit(CircuitConstructor):
+    def __init__(self, stochastic=True, **kwargs):
+        super(UCCSDCircuit, self).__init__(**kwargs)
+        self.ops_labels = None
+        self.stochastic = stochastic
+        self.circuit_name = "UCCSD"
     
+    def build_circuit(self):
+        unitary_op = Operator(np.identity(4))
+        theta = np.pi * np.random.rand(self.n_qubits)
+        q_reg = qk.QuantumRegister(self.n_qubits)
+        c_reg = qk.ClassicalRegister(self.n_qubits)
+        circ = qk.QuantumCircuit(q_reg, c_reg)
+        for idx, q in enumerate(q_reg):
+            circ.x(q) #pylint: disable=no-member
+            circ.ry(theta[idx],q) #pylint: disable=no-member
+        ops_labels = []
+        for (idx, q), q_next in zip(enumerate(q_reg), q_reg[1:]):
+            circ.cry(theta[idx], q, q_next) #pylint: disable=no-member
+            circ.cx(q, q_next) #pylint: disable=no-member
+            # for now not considering noisy cnot gates in controlled-Y
+            if self.stochastic and bool(np.random.choice(2)):
+                label = 'unitary_{}_{}'.format(idx, idx+1)
+                ops_labels.append(label)
+                circ.unitary(unitary_op, [idx, idx+1], label=label) #pylint: disable=no-member
+        self.ops_labels = ops_labels
+        if self.state_sim:
+            self.circuit = circ
+            return
+        circ.measure(q_reg, c_reg) #pylint: disable=no-member
+        self.circuit = circ
+
+
 if __name__ == "__main__":
-    # Build example set of random circuits
+    # Build example set of random graph circuits
     circ_builder = GraphCircuit()
+    for _ in range(20):
+        circ_builder.build_circuit()
+    # Build example set of stochastic GHZ circuits
+    circ_builder = GHZCircuit()
     for _ in range(20):
         circ_builder.build_circuit()
