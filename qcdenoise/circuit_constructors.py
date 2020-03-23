@@ -93,7 +93,6 @@ class GraphCircuit(CircuitConstructor):
         super(GraphCircuit, self).__init__(**kwargs)
         if isinstance(graph_db, GraphDB):
             self.graph_db = graph_db
-        self.state_vec = True
         self.gate_type = gate_type
         self.all_graphs = self.get_sorted_db()
         self.largest_subgraph = self.check_largest(largest_subgraph)
@@ -130,11 +129,8 @@ class GraphCircuit(CircuitConstructor):
             union_nodes = len(union_graph.nodes)
             if union_nodes > 1:
                 first_node = random.randint(0, union_graph.order() - 1)
-                offset = len(sub_g.nodes)
                 second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1,sub_g.order()) 
-                #second_node = random.randint(union_nodes, offset + union_nodes - 1)    
                 union_graph = nx.disjoint_union(union_graph, sub_g)
-                #union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)]) 
                 for idx in second_nodes:
                     union_graph.add_weighted_edges_from([(first_node, idx, 1.0)])
             else:
