@@ -22,16 +22,32 @@ def pool_shuffle_split(files_dir, file_expr, mode='train', split=0.8, delete=Tru
     for _ in range(5):
         np.random.shuffle(runs)
     if split > 0.999:
-        np.save(file_expr+'%s.npy' % mode, runs, allow_pickle=False)
-        print('wrote {} with shape {}'.format(file_expr+'train.npy', runs.shape))
+        path = file_expr+'.npy'
+        np.save(path, runs, allow_pickle=False)
+        print('wrote {} with shape {}'.format(path, runs.shape))
+        if delete:
+            for file in files:
+                file_path = os.path.join(files_dir, file)
+                args = "rm %s" %file_path
+                args = shlex.split(args)
+                if os.path.exists(file_path):
+                    try:
+                        subprocess.run(args, check=True, timeout=120)
+                        print("rm %s" % file_path)
+                    except subprocess.SubprocessError as e:
+                        print("failed to rm %s" % file_path)
+                        print(e) 
+        return path 
     else:
         part = int(runs.shape[0] * split)
         train = runs[:part]
         test = runs[part:]
-        np.save(file_expr+'train.npy', train, allow_pickle=False)
-        print('wrote {} with shape {}'.format(file_expr+'train.npy', train.shape))
-        np.save(file_expr+'test.npy', test, allow_pickle=False)
-        print('wrote {} with shape {}'.format(file_expr+'test.npy', test.shape))
+        path_train = file_expr+'train.npy' 
+        np.save(path_train, train, allow_pickle=False)
+        print('wrote {} with shape {}'.format(path_train, train.shape))
+        path_test = file_expr+'test.npy' 
+        np.save(path_test, test, allow_pickle=False)
+        print('wrote {} with shape {}'.format(path_test, test.shape))
     cond = os.path.exists(file_expr+'train.npy') and os.path.exists(file_expr+'test.npy')
     if delete and cond:
         for file in files:
@@ -45,6 +61,7 @@ def pool_shuffle_split(files_dir, file_expr, mode='train', split=0.8, delete=Tru
                 except subprocess.SubprocessError as e:
                     print("failed to rm %s" % file_path)
                     print(e)
+    return path_train, path_test
 
 def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=int(10e9)):
     env = lmdb.open(lmdb_path, map_size=lmdb_map_size, map_async=True, writemap=True, create=True)

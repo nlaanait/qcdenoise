@@ -90,11 +90,13 @@ class GraphCircuit(CircuitConstructor):
     Arguments:
         CircuitConstructor {Parent class} -- abstract class
     """
-    def __init__(self, graph_db=GraphDB(), gate_type="Controlled_Phase", stochastic=True, smallest_subgraph=2, 
+    def __init__(self, graph_data=None, gate_type="Controlled_Phase", stochastic=True, smallest_subgraph=2, 
                        largest_subgraph=None, **kwargs):
         super(GraphCircuit, self).__init__(**kwargs)
-        if isinstance(graph_db, GraphDB):
-            self.graph_db = graph_db
+        if graph_data is None:
+            self.graph_db = GraphDB()
+        else:
+            self.graph_db = GraphDB(graph_data=graph_data) 
         self.gate_type = gate_type
         self.all_graphs = self.get_sorted_db()
         self.largest_subgraph = self.check_largest(largest_subgraph)
@@ -147,8 +149,11 @@ class GraphCircuit(CircuitConstructor):
         sub_graphs = []
         for num_nodes in comb:
             sub_g = self.all_graphs[num_nodes]
-            idx = random.randint(0, len(sub_g) - 1)
-            sub_graphs.append(sub_g[idx])
+            if len(sub_g) < 1:
+                sub_graphs.append(sub_g)
+            else:
+                idx = random.randint(0, len(sub_g) - 1)
+                sub_graphs.append(sub_g[idx])
         return sub_graphs
 
     def build_circuit(self, graph_plot=False, min_vertex_cover=1, max_itr=10):

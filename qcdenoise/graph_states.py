@@ -1,5 +1,6 @@
 import warnings
 import random
+import math
 
 import networkx as nx
 import numpy as np
@@ -85,7 +86,7 @@ class GraphData:
             for (idx, datum) in enumerate(data):
                 self.data[idx] = datum
 
-    def partition(self, ratio=0.8, nonzero=True):
+    def partition(self, ratio=0.2, nonzero=True):
         """Two-way split of database
         
         Keyword Arguments:
@@ -108,28 +109,31 @@ class GraphData:
 
         # shuffle each category and 2-way split
         for idx, (key, itm) in enumerate(grouped_g_data.items()):
-            random.shuffle(itm)
-            part = int(len(itm) * ratio)
-            test = itm[:part]
-            train = itm[part:]
-            if len(test) < 1 and nonzero:
+            if len(itm)> 2:
+                random.shuffle(itm)
+                part = math.ceil(len(itm) * ratio)
+                test = itm[:part]
+                train = itm[part:]
+                if len(train) > 1 :
+                    test_g_data.append(test)
+                    train_g_data.append(train)
+                else:
+                    test_g_data.append(test)
+                    train_g_data.append(test)
+            else:
                 test_g_data.append(itm)
                 train_g_data.append(itm)
-            else:
-                test_g_data.append(test)
-                train_g_data.append(train)
         print("Test Data- Number of graph examples per # of edges in graph: ", [len(itm) for itm in test_g_data])
         print("Train Data- Number of graph examples per # of edges in graph: ",[len(itm) for itm in train_g_data]) 
         
         # collapse categories into a single list
         test_data = []
         for items in test_g_data:
-            if len(items) > 1:
-                if isinstance(items[0], list):
-                    for itm in items:
-                        test_data.append(itm)
-                else:
-                    test_data.append(items[0])
+            if len(items) > 1 and isinstance(items[0], list):
+                for itm in items:
+                    test_data.append(itm)
+            else:
+                test_data.append(items[0])
 
         train_data = []
         for items in train_g_data:
@@ -146,7 +150,6 @@ class GraphDB:
     def __init__(self, graph_data=None):
         self.graph_data = graph_data if graph_data is not None else GraphData().data
         self.graph = self._build_graphDB()
-
 
     def _build_graphDB(self):
         graph_db= dict([('%d' %d, {'G':None, 'V':None, 'LUclass':None, '2Color':None}) 

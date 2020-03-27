@@ -18,10 +18,15 @@ class CircuitSampler:
     def __init__(self, n_qubits=2, stochastic=True, circuit_builder=GHZCircuit, n_shots=1024, verbose=True):
         assert n_qubits >= 2, "# of qubits must be 2 or larger"
         self.n_qubits = n_qubits
-        assert isinstance(circuit_builder(), CircuitConstructor),\
+        assert isinstance(circuit_builder, CircuitConstructor),\
             "circuit_builder must be an instance of the CircuitConstructor class"
-        self.circ_builder = circuit_builder(n_qubits=self.n_qubits, stochastic=stochastic, 
-                                            state_simulation=False, verbose=verbose)
+        # self.circ_builder = circuit_builder(n_qubits=self.n_qubits, stochastic=stochastic, 
+        #                                     state_simulation=False, verbose=verbose)
+        self.circ_builder = circuit_builder
+        self.circ_builder.n_qubits = n_qubits
+        self.circ_builder.stochastic = stochastic
+        self.circ_builder.verbose = verbose
+        self.circ_builder.state_sim = False
         self.n_shots = n_shots
         self.verbose = verbose
         self.noise_model = NoiseModel()
