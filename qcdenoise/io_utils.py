@@ -1,27 +1,37 @@
-from time import time
 import os
-import subprocess
-import shlex
 import random
+import shlex
+import subprocess
+from time import time
+
 import lmdb
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 #pylint: disable=no-member
+global seed
+seed = 1234
+np.random.seed(seed)
+random.seed(seed)
 
-def pool_shuffle_split(files_dir, file_expr, split=0.8, delete=True):
+def pool_shuffle_split(files_dir, file_expr, mode='train', split=0.8, delete=True):
     files = os.listdir(files_dir)
     files = [file for file in files if file_expr in file]
     runs = np.concatenate([np.load(os.path.join(files_dir, file), mmap_mode='r') for file in files])
-    np.random.shuffle(runs)
-    part = int(runs.shape[0] * split)
-    train = runs[:part]
-    test = runs[part:]
-    np.save(file_expr+'train.npy', train, allow_pickle=False)
-    print('wrote {} with shape {}'.format(file_expr+'train.npy', train.shape))
-    np.save(file_expr+'test.npy', test, allow_pickle=False)
-    print('wrote {} with shape {}'.format(file_expr+'test.npy', test.shape))
+    for _ in range(5):
+        np.random.shuffle(runs)
+    if split > 0.999:
+        np.save(file_expr+'%s.npy' % mode, runs, allow_pickle=False)
+        print('wrote {} with shape {}'.format(file_expr+'train.npy', runs.shape))
+    else:
+        part = int(runs.shape[0] * split)
+        train = runs[:part]
+        test = runs[part:]
+        np.save(file_expr+'train.npy', train, allow_pickle=False)
+        print('wrote {} with shape {}'.format(file_expr+'train.npy', train.shape))
+        np.save(file_expr+'test.npy', test, allow_pickle=False)
+        print('wrote {} with shape {}'.format(file_expr+'test.npy', test.shape))
     cond = os.path.exists(file_expr+'train.npy') and os.path.exists(file_expr+'test.npy')
     if delete and cond:
         for file in files:
@@ -102,7 +112,9 @@ class QCIRCDataSet(Dataset):
             input_name = txn.get(b"input_name").decode("ascii")
             encoding_name = txn.get(b"encoding_name").decode("ascii")
             self.num_samples = int(txn.get(b"num_samples").decode("ascii"))
-        self.records = range(0, self.num_samples) 
+        self.records = np.arange(0, self.num_samples, dtype=np.int) 
+        for _ in range(10):
+            np.random.shuffle(self.records)
         self.data_specs={'input_shape': list(input_shape), 'target_shape': list(target_shape), 'encoding_shape': list(encoding_shape),
                          'target_dtype':target_dtype, 'input_dtype': input_dtype, 'encoding_dtype': encoding_dtype,
                          'target_key':target_name, 'input_key': input_name, 'encoding_key': encoding_name}

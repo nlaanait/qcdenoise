@@ -14,6 +14,7 @@ from .graph_states import GraphDB, _plots, nx_plot_options
 global seed
 seed = 1234
 np.random.seed(seed)
+random.seed(seed)
 
 def partitions(n, start=2):
     """Return all possible partitions of integer n

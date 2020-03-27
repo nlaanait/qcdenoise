@@ -9,6 +9,7 @@ def train(*args, **kwargs):
     elif isinstance(net, DenseModel):
         train_Dense(*args, **kwargs)
 
+
 def test(*args, **kwargs):
     net = args[0]
     if isinstance(net, AdjTModel) or isinstance(net, AdjTAsymModel):
@@ -23,7 +24,10 @@ def train_Dense(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-
     dev_name = "cuda:%d" %dev_num
     device = torch.device(dev_name if torch.cuda.is_available() else "cpu") #pylint: disable=no-member
     net.train()
+    opt_state = None
     for epoch in range(num_epochs):
+        if opt_state:
+            optimizer.load_state_dict(opt_state)
         for batch_num, batch in enumerate(dataloader):
             # data
             inputs, targets = batch['input'], batch['target']
@@ -44,6 +48,7 @@ def train_Dense(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-
                 running_loss = 0.0
         if epoch % test_epoch == test_epoch - 1:
             if test_func_args:
+                opt_state = optimizer.state_dict()
                 net.eval()
                 print('Test Data:')
                 test_Dense(*test_func_args)
@@ -104,7 +109,10 @@ def train_adjT(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-4
     dev_name = "cuda:%d" %dev_num
     device = torch.device(dev_name if torch.cuda.is_available() else "cpu") #pylint: disable=no-member
     net.train()
+    opt_state = None
     for epoch in range(num_epochs):
+        if opt_state:
+            optimizer.load_state_dict(opt_state)
         for batch_num, batch in enumerate(dataloader):
             # data
             inputs, targets, encodings = batch['input'], batch['target'], batch['encoding']
@@ -126,6 +134,7 @@ def train_adjT(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-4
                 running_loss = 0.0
         if epoch % test_epoch == test_epoch - 1:
             if test_func_args:
+                opt_state = optimizer.state_dict()
                 net.eval()
                 print('Test Data:')
                 test_AdjT(*test_func_args)
