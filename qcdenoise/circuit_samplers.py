@@ -20,11 +20,6 @@ class CircuitSampler:
         self.n_qubits = n_qubits
         assert isinstance(circuit_builder, CircuitConstructor),\
             "circuit_builder must be an instance of the CircuitConstructor class"
-        # self.circ_builder = circuit_builder(n_qubits=self.n_qubits, stochastic=stochastic, 
-        #                                     state_simulation=False, verbose=verbose)
-        self.circ_builder = circuit_builder
-        self.circ_builder.n_qubits = n_qubits
-        self.circ_builder.stochastic = stochastic
         self.circ_builder.verbose = verbose
         self.circ_builder.state_sim = False
         self.n_shots = n_shots

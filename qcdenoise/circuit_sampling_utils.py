@@ -34,7 +34,8 @@ def sample_circuit_prob_adjT(args):
     circuit_builder_kwargs = sampling_dict.get("circuit_builder_kwargs", None)
     n_qubits = sampling_dict["n_qubits"]
     sampler = circuit_sampler(n_qubits=n_qubits, noise_specs=noise_specs, 
-                              circuit_builder=circuit_builder(**circuit_builder_kwargs), verbose=False)
+                              circuit_builder=circuit_builder(n_qubits=n_qubits, stochastic=True,
+                              **circuit_builder_kwargs), verbose=False)
     all_prob_vec = np.empty((sampling_dict["n_samples"], 2**n_qubits, 2))
     adj_T_shape = (sampling_dict["n_samples"], sampling_dict["adjT_dim"], n_qubits, n_qubits)
     all_adj_T = np.empty(adj_T_shape)
