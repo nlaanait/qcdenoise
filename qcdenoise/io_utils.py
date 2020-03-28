@@ -63,7 +63,7 @@ def pool_shuffle_split(files_dir, file_expr, mode='train', split=0.8, delete=Tru
                     print(e)
     return path_train, path_test
 
-def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=int(10e9)):
+def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=int(10e9), delete=True):
     env = lmdb.open(lmdb_path, map_size=lmdb_map_size, map_async=True, writemap=True, create=True)
     prob_data = np.load(prob_data_path, mmap_mode='r')
     adjT_data = np.load(adjT_data_path, mmap_mode='r')
@@ -101,6 +101,17 @@ def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=i
         txn.put(b"num_samples", bytes('%s' %str(idx+1), "ascii"))
         env.sync()
     print('wrote lmdb database in %s' % lmdb_path)
+    if delete:
+        for file_path in [prob_data_path, adjT_data_path]:
+            args = "rm %s" %file_path
+            args = shlex.split(args)
+            if os.path.exists(file_path):
+                try:
+                    subprocess.run(args, check=True, timeout=120)
+                    print("rm %s" % file_path)
+                except subprocess.SubprocessError as e:
+                    print("failed to rm %s" % file_path)
+                    print(e)
 
 class QCIRCDataSet(Dataset):
     """ QCIRC data set on lmdb."""

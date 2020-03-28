@@ -37,7 +37,7 @@ for mode, rounds in zip(["train", "test"], [train_rounds, test_rounds]):
     prob_path = qcd.pool_shuffle_split(os.getcwd(), 'run_prob_%s' % mode, mode=mode, split=1, delete=True)
     adjT_path = qcd.pool_shuffle_split(os.getcwd(), 'run_adjT_%s' % mode, mode=mode, split=1, delete=True)
     timestamp = datetime.now().strftime('%m%d%y')
-    lmdb_path = os.path.join(os.getcwd(),'{}_nqbits{}_{}_{}.lmdb'.format(circuit_name, sampling_dict["n_qubits"], sampler, timestamp))
+    lmdb_path = os.path.join(os.getcwd(),'{}_nqbits{}_{}_{}_{}.lmdb'.format(circuit_name, sampling_dict["n_qubits"], sampler, timestamp, mode))
     qcd.prob_adjT_to_lmdb(lmdb_path, prob_path, adjT_path)
         
 
