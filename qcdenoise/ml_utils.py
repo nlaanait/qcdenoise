@@ -103,14 +103,15 @@ def test_AdjT(net, dataloader, loss_func, dev_num=0):
         print('Batches={}, Average Loss= {:.3f}'.format(batch_num + 1, test_loss)) 
     # return test_loss
 
-def train_adjT(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-4, num_epochs=10, batch_log=500, test_epoch=2, test_func_args=None):
+def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1e-4, weight_decay=1e-4, num_epochs=10, batch_log=500, test_epoch=2, test_func_args=None):
     running_loss = 0.0 
-    optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
+    # optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
     dev_name = "cuda:%d" %dev_num
     device = torch.device(dev_name if torch.cuda.is_available() else "cpu") #pylint: disable=no-member
     net.train()
-    opt_state = None
+    # opt_state = None
     for epoch in range(num_epochs):
+        scheduler.step()
         if opt_state:
             optimizer.load_state_dict(opt_state)
         for batch_num, batch in enumerate(dataloader):
@@ -121,10 +122,10 @@ def train_adjT(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-4
             encodings = encodings.to(device)
             net = net.to(device)
             # forward
+            optimizer.zero_grad()
             outputs = net(inputs, encodings)
             loss = loss_func(outputs, targets)
             # train
-            optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             # print stats
@@ -134,7 +135,7 @@ def train_adjT(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-4
                 running_loss = 0.0
         if epoch % test_epoch == test_epoch - 1:
             if test_func_args:
-                opt_state = optimizer.state_dict()
+                # opt_state = optimizer.state_dict()
                 net.eval()
                 print('Test Data:')
                 test_AdjT(*test_func_args)
