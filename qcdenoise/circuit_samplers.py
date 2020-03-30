@@ -47,7 +47,8 @@ class CircuitSampler:
             full_prob_dict[key] = itm / self.n_shots
         return full_prob_dict
         
-    def get_adjacency_tensor(self, max_tensor_dims=16, basis_gates=['id', 'cx', 'u1', 'u2', 'u3'], fixed_size=True):
+    def get_adjacency_tensor(self, max_tensor_dims=16, basis_gates=['id', 'cx', 'u1', 'u2', 'u3'], 
+                             fixed_size=True, undirected=True):
         """[summary]
         
         Keyword Arguments:
@@ -72,8 +73,9 @@ class CircuitSampler:
         # decompose() is needed to force transpiler to go into custom unitary gate ops
         _ = qk.transpile(self.circuit.decompose(), basis_gates=basis_gates, 
                          optimization_level=0, callback=get_dag)
-        adj_T = CircuitSampler.generate_adjacency_tensor(dag, adj_tensor_dim=(max_tensor_dims, self.n_qubits, self.n_qubits), 
-                                                         encoding=None, fixed_size=fixed_size)
+        adj_T = CircuitSampler.generate_adjacency_tensor(dag, adj_tensor_dim=(max_tensor_dims, self.n_qubits, 
+                                                         self.n_qubits), encoding=None, fixed_size=fixed_size, 
+                                                         undirected=undirected)
         return adj_T
 
     @staticmethod
@@ -100,7 +102,7 @@ class CircuitSampler:
         return binary_strings
 
     @staticmethod
-    def generate_adjacency_tensor(dag, adj_tensor_dim, encoding=None, fixed_size=True):
+    def generate_adjacency_tensor(dag, adj_tensor_dim, encoding=None, fixed_size=True, undirected=True):
         """[summary]
        
         Arguments:
@@ -132,21 +134,24 @@ class CircuitSampler:
                         else:
                             plane_idx +=1
                     if not write_success:
-                        warn('max # of planes in the adjacency tensor have been exceeded. Initialize a larger adjacency tensor')
+                        warn('max # of planes in the adjacency tensor have been exceeded. Initialize a larger \
+                             adjacency tensor')
                 if len(qubits) == 2:
                     q_idx_1, q_idx_2 = [q.index for q in qubits]
                     plane_idx = 0
                     write_success = False
                     while plane_idx < adj_tensor.shape[0]:
-                        if adj_tensor[plane_idx, q_idx_1, q_idx_2] == 0: # assume that the graph is undirected
+                        if adj_tensor[plane_idx, q_idx_1, q_idx_2] == 0:
                             adj_tensor[plane_idx, q_idx_1, q_idx_2] = encoding[gate.name]
-                            adj_tensor[plane_idx, q_idx_2, q_idx_1] = encoding[gate.name]
+                            if undirected:
+                                adj_tensor[plane_idx, q_idx_2, q_idx_1] = encoding[gate.name]
                             write_success = True
                             break
                         else:
                             plane_idx += 1
                     if not write_success:
-                        warn('max # of planes in the adjacency tensor have been exceeded. Initialize a larger adjacency tensor')
+                        warn('max # of planes in the adjacency tensor have been exceeded. Initialize a larger adjacency\
+                             tensor')
 
         if not fixed_size:
             # get rid of planes in adj_tensor with all id gates (i.e zeros)

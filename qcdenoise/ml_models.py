@@ -1,3 +1,5 @@
+from warnings import warn
+
 import numpy as np
 import tensorflow as tf
 import torch
@@ -38,11 +40,13 @@ def build_gsn(input_dim, hidden_nodes=1024, hidden_nodes_stochastic=16, walkback
     return cross_entropy
     
 def binomial_draw(shape=[1], p=0.5, dtype='float32'):
-      return tf.select(tf.less(tf.random_uniform(shape=shape, minval=0, maxval=1, dtype='float32'), tf.fill(shape, p)), tf.ones(shape, dtype=dtype), tf.zeros(shape, dtype=dtype))
+      return tf.select(tf.less(tf.random_uniform(shape=shape, minval=0, maxval=1, dtype='float32'), 
+                               tf.fill(shape, p)), tf.ones(shape, dtype=dtype), tf.zeros(shape, dtype=dtype))
 
 def binomial_draw_vec(p_vec, dtype='float32'):
   shape = tf.shape(p_vec)
-  return tf.select(tf.less(tf.random_uniform(shape=shape, minval=0, maxval=1, dtype='float32'), p_vec), tf.ones(shape, dtype=dtype), tf.zeros(shape, dtype=dtype))
+  return tf.select(tf.less(tf.random_uniform(shape=shape, minval=0, maxval=1, dtype='float32'), p_vec), 
+                           tf.ones(shape, dtype=dtype), tf.zeros(shape, dtype=dtype))
 
 def salt_and_pepper(X, rate=0.3):
   a = binomial_draw(shape=tf.shape(X), p=1-rate)
@@ -111,7 +115,8 @@ class AdjTModel(nn.Module):
     self.bn2 = nn.BatchNorm2d(self.conv2.out_channels)
     self.conv3 = nn.Conv2d(64, 64, 3, padding=3//2, bias=False)
     self.bn3 = nn.BatchNorm2d(self.conv3.out_channels)
-    self.conv4 = nn.Conv2d(64, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), 3, padding=3//2, bias=False)
+    self.conv4 = nn.Conv2d(64, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), 3, padding=3//2, 
+                           bias=False)
     self.bn4 = nn.BatchNorm2d(self.conv4.out_channels)
 
   def forward(self, prob, adjT):
@@ -144,7 +149,7 @@ class AdjTModel(nn.Module):
 
 class AdjTAsymModel(nn.Module):
   def __init__(self, inputs_dim=None, targets_dim=None, encodings_dim=None, 
-                     combine_mode='Add', asym_mode='dense'):
+                     combine_mode='Add', asym_mode='dense', p_dropout=0.25):
     assert asym_mode in ['residual', 'dense'], 'asym_mode requested is not implemented'
     super(AdjTAsymModel, self).__init__()
     self.encodings_dim = encodings_dim
@@ -152,12 +157,12 @@ class AdjTAsymModel(nn.Module):
     self.targets_dim = targets_dim
     self.asym_mode = asym_mode
     # layers for prob vector
-    self.fc1  = nn.Linear(inputs_dim, 256)
-    self.fc2 =  nn.Linear(256, 512)
-    self.fc3 =  nn.Linear(512, 512)
-    self.fc4 =  nn.Linear(512, 512)
-    self.fc5 =  nn.Linear(512, 256)
-    self.fc6 = nn.Linear(256, 256)  
+    self.fc1  = nn.Linear(inputs_dim, 512)
+    self.fc2 =  nn.Linear(512, 256)
+    self.fc3 =  nn.Linear(256, 128)
+    self.fc4 =  nn.Linear(128, 64)
+    self.fc5 =  nn.Linear(64, 128)
+    self.fc6 = nn.Linear(128, 256)  
     self.fc7 = nn.Linear(256, targets_dim)
     # self.fc8 = nn.Linear(targets_dim, targets_dim)
     # layers for adjacency tensor
@@ -192,12 +197,18 @@ class AdjTAsymModel(nn.Module):
     self.conv4_v = nn.Conv2d(self.conv3.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
     self.conv4_h = nn.Conv2d(self.conv4_v.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
     in_c = self.calc_in_c(in_c, self.conv4_h)
-    self.conv4 = nn.Conv2d(in_c, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), 3, padding=3//2, bias=False)
+    self.conv4 = nn.Conv2d(in_c, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), 3, padding=3//2, 
+                           bias=False)
     self.bn4 = nn.BatchNorm2d(self.conv4.out_channels)
     adjT_shape, prob_shape = self.test_forward(torch.zeros([1]+[inputs_dim]), torch.zeros([1]+list(self.encodings_dim)))
     self.adjT_flat_size = adjT_shape[1]*adjT_shape[2]*adjT_shape[3]
     self.fcAdjT = nn.Linear(self.adjT_flat_size, targets_dim)
     self.fcFinal = nn.Linear(targets_dim, targets_dim)
+    if p_dropout < 0 or p_dropout > 1:
+      warn("invalid p_dropout value was passed. Defaulting to p_dropout=0")
+      p_dropout = 0
+    self.drop2d = nn.Dropout2d(p=p_dropout)
+    self.drop1d = nn.Dropout(p=p_dropout)
 
 
   def calc_in_c(self, in_c, prev_conv):
@@ -232,12 +243,12 @@ class AdjTAsymModel(nn.Module):
         
   def forward(self, prob, adjT):
     # forward on prob vec branch
-    prob = F.relu(self.fc1(prob))
-    prob = F.relu(self.fc2(prob))
-    prob = F.relu(self.fc3(prob))
-    prob = F.relu(self.fc4(prob))
-    prob = F.relu(self.fc5(prob))
-    prob = F.relu(self.fc6(prob))
+    prob = self.drop1d(F.relu(self.fc1(prob)))
+    prob = self.drop1d(F.relu(self.fc2(prob)))
+    prob = self.drop1d(F.relu(self.fc3(prob)))
+    prob = self.drop1d(F.relu(self.fc4(prob)))
+    prob = self.drop1d(F.relu(self.fc5(prob)))
+    prob = self.drop1d(F.relu(self.fc6(prob)))
     prob = self.fc7(prob)
     
     # forward on adjacency tensor branch
@@ -247,10 +258,10 @@ class AdjTAsymModel(nn.Module):
       asym_block = self.dense_block
 
     adjT = self.conv0(adjT)
-    adjT = asym_block(adjT, self.bn1, self.conv1, self.conv1_h, self.conv1_v)
-    adjT = asym_block(adjT, self.bn2, self.conv2, self.conv2_h, self.conv2_v)
-    adjT = asym_block(adjT, self.bn3, self.conv3, self.conv3_h, self.conv3_v)
-    adjT = asym_block(adjT, self.bn4, self.conv4, self.conv4_h, self.conv4_v)
+    adjT = self.drop2d(asym_block(adjT, self.bn1, self.conv1, self.conv1_h, self.conv1_v))
+    adjT = self.drop2d(asym_block(adjT, self.bn2, self.conv2, self.conv2_h, self.conv2_v))
+    adjT = self.drop2d(asym_block(adjT, self.bn3, self.conv3, self.conv3_h, self.conv3_v))
+    adjT = self.drop2d(asym_block(adjT, self.bn4, self.conv4, self.conv4_h, self.conv4_v))
 
     # combine output of both branches
     x = self.combine(prob, adjT)
@@ -290,4 +301,3 @@ if __name__ == "__main__":
   encodings_dim = [8,8,8]
   net = AdjTAsymModel(inputs_dim=inputs_dim, targets_dim=targets_dim, encodings_dim=encodings_dim)
   print(net)
-

@@ -134,7 +134,8 @@ class GraphCircuit(CircuitConstructor):
             union_nodes = len(union_graph.nodes)
             if union_nodes > 1:
                 first_node = random.randint(0, union_graph.order() - 1)
-                second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1,sub_g.order()) 
+                second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1, 
+                                                 sub_g.order()) 
                 union_graph = nx.disjoint_union(union_graph, sub_g)
                 for idx in second_nodes:
                     union_graph.add_weighted_edges_from([(first_node, idx, 1.0)])
