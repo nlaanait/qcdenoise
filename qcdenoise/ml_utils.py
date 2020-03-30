@@ -1,4 +1,5 @@
 import torch
+import os
 import torch.optim as optim
 from qcdenoise.ml_models import *
 
@@ -103,13 +104,13 @@ def test_AdjT(net, dataloader, loss_func, dev_num=0):
         print('Batches={}, Average Loss= {:.3f}'.format(batch_num + 1, test_loss)) 
     # return test_loss
 
-def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1e-4, weight_decay=1e-4, num_epochs=10, batch_log=500, test_epoch=2, test_func_args=None):
+def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1e-4, weight_decay=1e-4, num_epochs=10, batch_log=500, test_epoch=2, save_epoch=5, path='data/model.pt', test_func_args=None):
     running_loss = 0.0 
     # optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
     dev_name = "cuda:%d" %dev_num
     device = torch.device(dev_name if torch.cuda.is_available() else "cpu") #pylint: disable=no-member
     net.train()
-    # opt_state = None
+    opt_state = None
     for epoch in range(num_epochs):
         scheduler.step()
         if opt_state:
@@ -131,7 +132,7 @@ def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1
             # print stats
             running_loss += loss.item()
             if batch_num % batch_log == batch_log - 1:    
-                print('Epoch={}, Batch={:5d}, Loss= {:.3f}'.format(epoch + 1, batch_num + 1, running_loss / batch_log))
+                print('Epoch={}, Lr= {:5f}, Batch={:5d}, Loss={:.3f}'.format(epoch + 1, scheduler.get_lr()[0], batch_num + 1, running_loss / batch_log))
                 running_loss = 0.0
         if epoch % test_epoch == test_epoch - 1:
             if test_func_args:
@@ -142,5 +143,7 @@ def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1
                 net.train()
             else:
                 print('Skipping Evaluation: test_func_args was not provided')
+        if epoch % save_epoch == save_epoch - 1:
+            torch.save(net.state_dict(), path)
 
     # return net
