@@ -157,14 +157,13 @@ class AdjTAsymModel(nn.Module):
     self.targets_dim = targets_dim
     self.asym_mode = asym_mode
     # layers for prob vector
-    self.fc1  = nn.Linear(inputs_dim, 512)
-    self.fc2 =  nn.Linear(512, 256)
-    self.fc3 =  nn.Linear(256, 128)
-    self.fc4 =  nn.Linear(128, 64)
-    self.fc5 =  nn.Linear(64, 128)
-    self.fc6 = nn.Linear(128, 256)  
+    self.fc1  = nn.Linear(inputs_dim, 256)
+    self.fc2 =  nn.Linear(256, 512)
+    self.fc3 =  nn.Linear(512, 512)
+    self.fc4 =  nn.Linear(512, 512)
+    self.fc5 =  nn.Linear(512, 256)
+    self.fc6 = nn.Linear(256, 256)  
     self.fc7 = nn.Linear(256, targets_dim)
-    # self.fc8 = nn.Linear(targets_dim, targets_dim)
     # layers for adjacency tensor
     adj_c = self.encodings_dim[2]
     kern_v = [adj_c + adj_c%2 -1, 1]
