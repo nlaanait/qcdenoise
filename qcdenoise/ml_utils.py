@@ -108,11 +108,11 @@ def test_AdjT(net, dataloader, loss_func, dev_num=0):
     return test_loss
 
 def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1e-4, weight_decay=1e-4, 
-               num_epochs=10, batch_log=500, test_epoch=2, save_epoch=5, path='data/model.pt', test_func_args=None):
+               num_epochs=10, step_log=500, test_epoch=2, save_epoch=5, path='data/model.pt', test_func_args=None):
     running_loss = 0.0 
     dev_name = "cuda:%d" %dev_num
     device = torch.device(dev_name if torch.cuda.is_available() else "cpu") #pylint: disable=no-member
-    logs = {'lr':[], 'epoch':[], 'step':[], 'loss':[], 'test_loss':[None], 'test_epoch':[None]}
+    logs = {'lr':[], 'epoch':[], 'step':[], 'loss':[], 'test_loss':[], 'test_step':[]}
     opt_state = None
     step = 0
     if test_func_args:
@@ -121,8 +121,8 @@ def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1
         net.eval()
         print('Test Data:')
         test_loss = test_AdjT(*test_func_args)
-        logs['test_loss'][0] = test_loss
-        logs['test_epoch'][0]= epoch_test
+        logs['test_loss'].append(test_loss)
+        logs['test_step'].append(step)
     net.train()
     for epoch in range(num_epochs):
         scheduler.step()
@@ -145,13 +145,11 @@ def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1
             optimizer.step()
             # print stats
             running_loss += loss.item()
-            if batch_num % batch_log == batch_log - 1:
+            if step % step_log == 0 :
                 logs['lr'].append(scheduler.get_lr()[0])
                 logs['epoch'].append(epoch+1)
                 logs['step'].append(step)
-                logs['loss'].append(running_loss/batch_log)    
-                logs['test_loss'].append(test_loss)
-                logs['test_epoch'].append(epoch_test)
+                logs['loss'].append(running_loss/step_log)    
                 print('Epoch={}, Lr= {:5f}, Step={:5d}, Loss={:.3f}'.format(logs['epoch'][-1], logs['lr'][-1], 
                       logs['step'][-1], logs['loss'][-1]))
                 running_loss = 0.0
@@ -162,10 +160,8 @@ def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1
                 print('Test Data:')
                 test_loss = test_AdjT(*test_func_args)
                 epoch_test += test_epoch
-                logs['test_loss'].pop(-1)
-                logs['test_epoch'].pop(-1)
-                logs['test_loss'][-1] = test_loss
-                logs['test_epoch'][-1] = epoch_test
+                logs['test_loss'].append(test_loss)
+                logs['test_step'].append(step)
                 net.train()
             else:
                 print('Skipping Evaluation: test_func_args was not provided')
