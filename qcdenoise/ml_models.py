@@ -209,7 +209,6 @@ class AdjTAsymModel(nn.Module):
     self.drop2d = nn.Dropout2d(p=p_dropout)
     self.drop1d = nn.Dropout(p=p_dropout)
 
-
   def calc_in_c(self, in_c, prev_conv):
     if self.asym_mode == 'residual':
           in_c = prev_conv.out_channels
@@ -292,6 +291,14 @@ class AdjTAsymModel(nn.Module):
       y = y.view(-1, self.adjT_flat_size)
       y = self.fcAdjT(y)
       return x * y
+
+  def get_stats(self):
+      n_params = 0
+      for param_tensor in self.state_dict():
+        tensor_size = self.state_dict()[param_tensor].size()
+        n_params += np.prod(tensor_size[:])
+        print(param_tensor, "\t", tensor_size)
+      print("Total # of weights = {}".format(int(n_params)))
 
 
 if __name__ == "__main__":

@@ -235,7 +235,6 @@ class UnitaryNoiseSampler(CircuitSampler):
         prob_arr = np.array([noise_val for (_, noise_val) in noise_prob.items()]) 
         return prob_arr
 
-
     @staticmethod
     def get_phase_amp_damp_error(func, max_prob=0.1):
         phases = np.random.uniform(high=max_prob, size=2)
@@ -252,6 +251,10 @@ class UnitaryNoiseSampler(CircuitSampler):
         q_error_2 = func(amps[1])
         unitary_error = q_error_1.tensor(q_error_2) 
         return unitary_error, amps
+
+
+class DeviceNoiseSampler(CircuitSampler):
+    pass
 
 
 if __name__ == "__main__":
