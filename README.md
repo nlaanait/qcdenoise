@@ -23,6 +23,6 @@ python setup.py install
 See `examples`
 
 
-### Contributors
+### Authors
 * Numan Laanait- nlaanait@gmail.com
 * Kathleen Hamilton
