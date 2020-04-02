@@ -24,5 +24,5 @@ See `examples`
 
 
 ### Authors
-* Numan Laanait- nlaanait@gmail.com
-* Kathleen Hamilton
+* Numan Laanait- [@nlaanait](https://github.com/nlaanait)
+* Kathleen Hamilton- [@k8hamilton](https://github.com/k8hamilton)
