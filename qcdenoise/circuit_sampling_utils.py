@@ -1,30 +1,12 @@
+import datetime
 import multiprocessing as mp
 import os
+
 import numpy as np
-from .circuit_samplers import UnitaryNoiseSampler 
+
 from .circuit_constructors import GHZCircuit
+from .circuit_samplers import UnitaryNoiseSampler
 
-def sample_circuit_prob(args):
-    n_samples, n_qubits, circuit_sampler, circuit_builder, noise_specs = args[:]
-    sampler = circuit_sampler(n_qubits=n_qubits, noise_specs=noise_specs, 
-                              circuit_builder=circuit_builder, verbose=False)
-    all_prob_vec = np.empty((n_samples, 2**n_qubits, 2))
-    for i in range(n_samples):
-        if i%10 == 0:
-            print('PID: {}, Sample #: {}'.format(os.getpid(), i))
-        prob_vec = sampler.sample()
-        all_prob_vec[i] = prob_vec
-    return all_prob_vec
-
-def parallel_sampler_prob(n_samples, n_qubits, circuit_sampler, circuit_builder, 
-                          noise_specs, n_procs=mp.cpu_count()):
-    pool = mp.Pool(n_procs, maxtasksperchild=1)
-    tasks = [(n_samples, n_qubits, circuit_sampler, circuit_builder, noise_specs) 
-                for _ in range(n_procs)]
-    jobs = pool.map(sample_circuit_prob, tasks)
-    all_results = np.concatenate([res for res in jobs])
-    pool.close()
-    return all_results
 
 def sample_circuit_prob_adjT(args):
     sampling_dict = args
@@ -33,9 +15,10 @@ def sample_circuit_prob_adjT(args):
     circuit_builder = sampling_dict.get("circuit_builder", GHZCircuit)
     circuit_builder_kwargs = sampling_dict.get("circuit_builder_kwargs", None)
     n_qubits = sampling_dict["n_qubits"]
-    sampler = circuit_sampler(n_qubits=n_qubits, noise_specs=noise_specs, 
-                              circuit_builder=circuit_builder(n_qubits=n_qubits, stochastic=True,
-                              **circuit_builder_kwargs), verbose=False)
+    circ_builder = circuit_builder(n_qubits=n_qubits, stochastic=True, state_simulation=False,
+                              **circuit_builder_kwargs)
+    sampler = circuit_sampler(circ_builder, n_qubits=n_qubits, noise_specs=noise_specs, 
+                              verbose=False)
     all_prob_vec = np.empty((sampling_dict["n_samples"], 2**n_qubits, 2))
     adj_T_shape = (sampling_dict["n_samples"], sampling_dict["adjT_dim"], n_qubits, n_qubits)
     all_adj_T = np.empty(adj_T_shape)
@@ -50,9 +33,7 @@ def sample_circuit_prob_adjT(args):
 
 def parallel_sampler_prob_adjT(sampling_dict, n_procs=mp.cpu_count()):
     pool = mp.Pool(n_procs, maxtasksperchild=1)
-    # sampling_dict = [(key, itm) for key, itm in sampling_dict.items()]
     tasks = [(sampling_dict) for _ in range(n_procs)]
-    # print(tasks)
     jobs = pool.map(sample_circuit_prob_adjT, tasks)
     all_results_prob = np.concatenate([res['prob_vec'] for res in jobs])
     all_results_adj_T = np.concatenate([res['adj_T'] for res in jobs])
@@ -61,17 +42,16 @@ def parallel_sampler_prob_adjT(sampling_dict, n_procs=mp.cpu_count()):
 
 if __name__ == "__main__":
     # execute a q_circuit 10 times per process
-    n_samples = 10
     n_procs = 4
+    sampling_dict = dict()
+    sampling_dict["n_samples"] = 10
     # 5-qubit GHZ with randomly inserted unitary operators
-    noise_specs = {'type':'amplitude_damping_error', 
+    sampling_dict["noise_specs"] = {'type':'amplitude_damping_error', 
                     'max_prob': 0.25}
-    n_qubits = 4
-    circuit_sampler = UnitaryNoiseSampler
-    circuit_builder = GHZCircuit
+    sampling_dict["n_qubits"] = 4
+    sampling_dict["circuit_sampler"] = UnitaryNoiseSampler
+    sampling_dict["circuit_builder"] = GHZCircuit
     # run it
-    all_results = parallel_sampler_prob(n_samples, n_qubits, circuit_sampler, 
-                                        circuit_builder, noise_specs, n_procs=n_procs)
+    all_results = parallel_sampler_prob_adjT(sampling_dict, n_procs=n_procs)
     print(all_results.shape)
     print(all_results[0])
-

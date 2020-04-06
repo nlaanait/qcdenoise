@@ -7,7 +7,7 @@ setup(
     url='',
     license='',
     author='Numan Laanait',
-    author_email='laanaitn@ornl.gov',
+    author_email='nlaanait@gmail.com',
     description='',
     install_requires=['numpy', 'qiskit', 'torch', 'lmdb'],
     # test_suite='tests',
