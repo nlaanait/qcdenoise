@@ -15,10 +15,12 @@ def train(*args, **kwargs):
 
 def test(*args, **kwargs):
     net = args[0]
+    val = None
     if isinstance(net, AdjTModel) or isinstance(net, AdjTAsymModel):
-        test_AdjT(*args, **kwargs)
+        val = test_AdjT(*args, **kwargs)
     elif isinstance(net, DenseModel):
-        test_Dense(*args, **kwargs)
+        val = test_Dense(*args, **kwargs)
+    return val
 
 
 def train_Dense(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-4, num_epochs=10, batch_log=500,

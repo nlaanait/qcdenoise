@@ -83,7 +83,8 @@ class DeviceNoiseSpec:
         
 
 class CircuitSampler:
-    def __init__(self, circuit_builder, n_qubits=2, stochastic=True, n_shots=1024, verbose=True):
+    def __init__(self, circuit_builder, n_qubits=2, stochastic=True, n_shots=1024, 
+                 verbose=True, backend=qk.Aer.get_backend('qasm_simulator')):
         assert n_qubits >= 2, "# of qubits must be 2 or larger"
         self.n_qubits = n_qubits
         self.circ_builder = circuit_builder
@@ -95,7 +96,9 @@ class CircuitSampler:
         self.verbose = verbose
         self.noise_model = NoiseModel()
         self.circuit = None
+        self.mapd_circuit = None
         self.gate_specs = None
+        self.backend = backend
         
     def print_verbose(self, *args, **kwargs):
         if self.verbose:
@@ -104,19 +107,21 @@ class CircuitSampler:
     def sample(self):
         raise NotImplementedError
 
-    def execute_circuit(self):
+    def execute_circuit(self, complete_prob=True):
         job = qk.execute(self.circuit, backend=qk.Aer.get_backend('qasm_simulator'), 
                          noise_model= self.noise_model, seed_simulator=seed, 
                          shots=self.n_shots)
         result = job.result()
         prob_dict = result.get_counts()
+        if not complete_prob:
+            return prob_dict
         binary_strings = CircuitSampler.generate_binary_strings(self.n_qubits)
         full_prob_dict = dict([(key, 0) for key in binary_strings])
         for key, itm in prob_dict.items():
             full_prob_dict[key] = itm / self.n_shots
         return full_prob_dict
         
-    def get_adjacency_tensor(self, max_tensor_dims=16, basis_gates=['id', 'cx', 'u1', 'u2', 'u3'], 
+    def get_adjacency_tensor(self, max_tensor_dims=(16,32,32), basis_gates=['id', 'cx', 'u1', 'u2', 'u3'], 
                              fixed_size=True, undirected=True):
         """[summary]
         
@@ -140,11 +145,11 @@ class CircuitSampler:
             basis_gates = self.noise_model.basis_gates
             self.print_verbose('Using noise model basis gates in transpilation.')
         # decompose() is needed to force transpiler to go into custom unitary gate ops
-        _ = qk.transpile(self.circuit.decompose(), basis_gates=basis_gates, 
+        self.mapd_circuit = qk.transpile(self.circuit.decompose(), backend=self.backend, basis_gates=basis_gates, 
                          optimization_level=0, callback=get_dag)
-        adj_T, gate_specs = CircuitSampler.generate_adjacency_tensor(dag, adj_tensor_dim=(max_tensor_dims, self.n_qubits, 
-                                                         self.n_qubits), encoding=None, fixed_size=fixed_size, 
-                                                         undirected=undirected)
+        adj_T, gate_specs = CircuitSampler.generate_adjacency_tensor(dag, adj_tensor_dim=max_tensor_dims, 
+                                                                     encoding=None, fixed_size=fixed_size, 
+                                                                     undirected=undirected)
         self.gate_specs = gate_specs
         return adj_T
 
@@ -244,7 +249,7 @@ class UnitaryNoiseSampler(CircuitSampler):
                           'amplitude_damping_error': UnitaryNoiseSampler.get_amp_damp_error}
         self.noise_specs = deepcopy(noise_specs)
         self.ops_labels = []
-        self.print_verbose("Using Circuit %s" % self.circ_builder.circuit_name)
+        self.print_verbose("Using Circuit %s" % self.circ_builder.name)
         if self.noise_specs is not None:
             self.noise = True
             self.error_type = self.noise_specs.pop('type')
@@ -338,7 +343,7 @@ class DeviceNoiseSampler(CircuitSampler):
         super(DeviceNoiseSampler, self).__init__(*args, **kwargs)
         self.backend_props = None
         self.noise_specs = deepcopy(noise_specs)
-        self.print_verbose("Using Circuit %s" % self.circ_builder.circuit_name)
+        self.print_verbose("Using Circuit %s" % self.circ_builder.name)
         if self.noise_specs is not None:
             self.noise = True
             self.print_verbose("Using Device Noise Model")
@@ -504,9 +509,56 @@ class DeviceNoiseSampler(CircuitSampler):
                                   for key, spec in self.gate_specs.items()]}
         random_props["general"] = []
         random_props["last_update_date"] = date
-        random_props["backend_name"] = self.circ_builder.circuit_name
+        random_props["backend_name"] = self.circ_builder.name
         random_props["backend_version"] = "0.0.0"
         return random_props
+
+
+class HardwareSampler(DeviceNoiseSampler):
+    def __init__(self, *args, **kwargs):
+        super(HardwareSampler, self).__init__(*args, **kwargs)
+        assert isinstance(self.backend, qk.providers.ibmq.ibmqbackend.IBMQBackend),\
+            "backend is not an instance of IBMQBackend"
+        self.noise_model = None
+        self.noise = False
+    
+    def screen_backend_dict(self):
+        for q_idx, q_prop in enumerate(self.backend_props['qubits']):
+            mod_props = [prop for prop in q_prop 
+                                if prop['name'] in list(self.noise_specs['qubit'].keys())]
+            self.backend_props['qubits'][q_idx] = mod_props
+
+        for g_idx, g_prop in enumerate(self.backend_props['gates']):
+            gate = g_prop['gate']
+            g_prop = g_prop['parameters']
+            mod_props = [prop for prop in g_prop 
+                                if prop['name'] in list(self.noise_specs[gate].keys())]
+            self.backend_props['gates'][g_idx]['parameters'] = mod_props
+    
+    def get_adjacency_tensor(self, max_tensor_dims=16, basis_gates=['id','cx','u1','u2','u3'], 
+                             fixed_size=True, undirected=True):
+        self.adjT = super().get_adjacency_tensor(max_tensor_dims=max_tensor_dims, 
+                                            basis_gates=basis_gates, fixed_size=fixed_size, 
+                                            undirected=undirected)
+        self.backend_props = self.backend.properties().to_dict()
+        self.screen_backend_dict()
+        return super().get_adjacency_tensor(max_tensor_dims=max_tensor_dims, 
+                                            basis_gates=basis_gates, fixed_size=fixed_size, 
+                                            undirected=undirected)
+
+    def sample(self, execute=False, job_name=None):
+        # get a circuit (from the circuit constructor)
+        self.circ_builder.build_circuit()
+        self.circuit = self.circ_builder.circuit
+        qjob = qk.assemble(self.mapd_circuit, shots=self.n_shots, backend=self.backend)
+        ideal_prob = self.execute_circuit()
+        if execute:
+            if job_name is None:
+                job_name = self.circ_builder.name
+            job = self.backend.run(qjob, job_name)
+            return {"job": job, "ideal_prob_dict": ideal_prob}
+        return {"qjob": qjob, "ideal_prob_dict": ideal_prob}
+
 
 if __name__ == "__main__":
     # Sample probabilities from a 5-qubit GHZ circuit with randomly inserted unitary noise channels
