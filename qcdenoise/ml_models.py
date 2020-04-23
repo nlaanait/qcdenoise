@@ -148,7 +148,7 @@ class AdjTModel(nn.Module):
 
 
 class AdjTAsymModel(nn.Module):
-  def __init__(self, inputs_dim=None, targets_dim=None, encodings_dim=None, 
+  def __init__(self, n_qubits, inputs_dim=None, targets_dim=None, encodings_dim=None, 
                      combine_mode='Add', asym_mode='dense', out_c= 32, p_dropout=0.25):
     assert asym_mode in ['residual', 'dense'], 'asym_mode requested is not implemented'
     super(AdjTAsymModel, self).__init__()
@@ -165,10 +165,10 @@ class AdjTAsymModel(nn.Module):
     self.fc6 = nn.Linear(256, 256)  
     self.fc7 = nn.Linear(256, targets_dim)
     # layers for adjacency tensor
-    adj_c = self.encodings_dim[2] 
+    adj_c = n_qubits 
     kern = [3, 3]
     pad = [kern[0]//2, kern[1]//2]
-    kern_v = [max(adj_c + adj_c%2 - 1, 2), 3]
+    kern_v = [max(adj_c + adj_c%2 - 1, 3), 3]
     kern_h = kern_v[::-1]
     pad_v = [kern_v[0]//2, kern_v[1]//2]
     pad_h = pad_v[::-1]
@@ -197,7 +197,7 @@ class AdjTAsymModel(nn.Module):
     self.conv4_v = nn.Conv2d(self.conv3.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
     self.conv4_h = nn.Conv2d(self.conv4_v.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
     in_c = self.calc_in_c(in_c, self.conv4_h)
-    self.conv4 = nn.Conv2d(in_c, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), kern, padding=pad, 
+    self.conv4 = nn.Conv2d(in_c, max(self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]),1), kern, padding=pad, 
                            bias=False)
     self.bn4 = nn.BatchNorm2d(self.conv4.out_channels)
     adjT_shape, prob_shape = self.test_forward(torch.zeros([1]+[inputs_dim]), torch.zeros([1]+list(self.encodings_dim)))
@@ -315,5 +315,5 @@ if __name__ == "__main__":
   inputs_dim = 256
   targets_dim = 256
   encodings_dim = [8,8,8]
-  net = AdjTAsymModel(inputs_dim=inputs_dim, targets_dim=targets_dim, encodings_dim=encodings_dim)
+  net = AdjTAsymModel(8, inputs_dim=inputs_dim, targets_dim=targets_dim, encodings_dim=encodings_dim)
   print(net)

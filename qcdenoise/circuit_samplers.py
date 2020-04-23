@@ -84,7 +84,7 @@ class DeviceNoiseSpec:
 
 class CircuitSampler:
     def __init__(self, circuit_builder, n_qubits=2, stochastic=True, n_shots=1024, 
-                 verbose=True, backend=qk.Aer.get_backend('qasm_simulator')):
+                 verbose=True, backend=qk.Aer.get_backend('qasm_simulator'), coupling=None):
         assert n_qubits >= 2, "# of qubits must be 2 or larger"
         self.n_qubits = n_qubits
         self.circ_builder = circuit_builder
@@ -99,6 +99,7 @@ class CircuitSampler:
         self.mapd_circuit = None
         self.gate_specs = None
         self.backend = backend
+        self.coupling = coupling
         
     def print_verbose(self, *args, **kwargs):
         if self.verbose:
@@ -144,8 +145,12 @@ class CircuitSampler:
         if self.noise_model:
             basis_gates = self.noise_model.basis_gates
             self.print_verbose('Using noise model basis gates in transpilation.')
+        if self.backend.name() == 'qasm_simulator':
+            backend = None
+        else:
+            backend = self.backend
         # decompose() is needed to force transpiler to go into custom unitary gate ops
-        self.mapd_circuit = qk.transpile(self.circuit.decompose(), backend=self.backend, basis_gates=basis_gates, 
+        self.mapd_circuit = qk.transpile(self.circuit.decompose(), backend=self.backend, coupling_map=self.coupling, basis_gates=basis_gates, 
                          optimization_level=0, callback=get_dag)
         adj_T, gate_specs = CircuitSampler.generate_adjacency_tensor(dag, adj_tensor_dim=max_tensor_dims, 
                                                                      encoding=None, fixed_size=fixed_size, 
@@ -433,7 +438,7 @@ class DeviceNoiseSampler(CircuitSampler):
             stateprep = choices([[0,1],[1,0]], weights=weights)[0]
             self.circuit.initialize(stateprep, qbit)
 
-    def get_adjacency_tensor(self, max_tensor_dims=16, basis_gates=['id','cx','u1','u2','u3'], 
+    def get_adjacency_tensor(self, max_tensor_dims=(16, 32, 32), basis_gates=['id','cx','u1','u2','u3'], 
                                    fixed_size=True, undirected=True):
         if self.circuit is None:
             self.circ_builder.build_circuit()
@@ -444,7 +449,7 @@ class DeviceNoiseSampler(CircuitSampler):
                                                 undirected=undirected)
             return adj_T
         num_qbit_planes = len(self.noise_specs["qubit"].keys())
-        adj_extra = np.zeros((num_qbit_planes, self.n_qubits, self.n_qubits))
+        adj_extra = np.zeros((num_qbit_planes, max_tensor_dims[1], max_tensor_dims[2]))
         for q_idx, props in enumerate(self.backend_props["qubits"]):
             idx = 0
             for prop in props:
@@ -453,7 +458,7 @@ class DeviceNoiseSampler(CircuitSampler):
                 idx += 1
         adjT = np.concatenate((adj_extra, self.adjT))
         num_gate_planes = len(self.noise_specs["cx"].keys()) 
-        adj_extra = np.zeros((num_gate_planes, self.n_qubits, self.n_qubits))
+        adj_extra = np.zeros((num_gate_planes, max_tensor_dims[1], max_tensor_dims[2]))
         for props in self.backend_props["gates"]:
             indices = props["qubits"]
             props = props["parameters"]
@@ -471,7 +476,7 @@ class DeviceNoiseSampler(CircuitSampler):
                         adj_extra[idx, q_idx_2, q_idx_1] = prop["value"]
                 idx += 1
         adjT = np.concatenate((adj_extra, adjT))
-        return adjT[:max_tensor_dims,:,:]
+        return adjT[:max_tensor_dims[0],:,:]
 
     def get_random_value(self, name, op):
         max_val = self.noise_specs[op][name]
@@ -535,7 +540,7 @@ class HardwareSampler(DeviceNoiseSampler):
                                 if prop['name'] in list(self.noise_specs[gate].keys())]
             self.backend_props['gates'][g_idx]['parameters'] = mod_props
     
-    def get_adjacency_tensor(self, max_tensor_dims=16, basis_gates=['id','cx','u1','u2','u3'], 
+    def get_adjacency_tensor(self, max_tensor_dims=(16, 32, 32), basis_gates=['id','cx','u1','u2','u3'], 
                              fixed_size=True, undirected=True):
         self.adjT = super().get_adjacency_tensor(max_tensor_dims=max_tensor_dims, 
                                             basis_gates=basis_gates, fixed_size=fixed_size, 

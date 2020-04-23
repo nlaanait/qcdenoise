@@ -115,7 +115,7 @@ def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=i
 
 class QCIRCDataSet(Dataset):
     """ QCIRC data set on lmdb."""
-    def __init__(self, lmdb_path, input_transform=None, target_transform=None,
+    def __init__(self, lmdb_path, pads= (0,0,0,0), input_transform=None, target_transform=None,
                                         debug=False):
         """__init__ [summary]
         
@@ -127,6 +127,7 @@ class QCIRCDataSet(Dataset):
             debug (bool, optional): [description]. Defaults to True.
         """
         self.debug = debug
+        self.pads = pads
         self.lmdb_path = lmdb_path
         self.env = lmdb.open(self.lmdb_path, create=False, readahead=False, readonly=True, writemap=False, lock=False)
         with self.env.begin(write=False) as txn:
@@ -195,7 +196,10 @@ class QCIRCDataSet(Dataset):
             if not isinstance(encodings, torch.Tensor):
                 encodings = torch.from_numpy(encodings)
             return {'input':inputs, 'target':targets, 'encoding': encodings}
-        return {'input':torch.from_numpy(inputs), 'target':torch.from_numpy(targets), 'encoding':torch.from_numpy(encodings)} #pylint: disable=no-member
+        encodings = torch.from_numpy(encodings)
+        pad = torch.nn.ConstantPad2d(self.pads, 0.0)
+        encodings = pad(encodings)
+        return {'input':torch.from_numpy(inputs), 'target':torch.from_numpy(targets), 'encoding':encodings} #pylint: disable=no-member
 
 
     def transform_target(self, targets):

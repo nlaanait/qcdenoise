@@ -12,15 +12,16 @@ def sample_circuit_prob_adjT(args):
     sampling_dict = args
     noise_specs = sampling_dict.get("noise_specs", None)
     circuit_sampler = sampling_dict.get("circuit_sampler", UnitaryNoiseSampler)
+    circuit_sampler_kwargs = sampling_dict.get("circuit_sampler_kwargs", {})
     circuit_builder = sampling_dict.get("circuit_builder", GHZCircuit)
-    circuit_builder_kwargs = sampling_dict.get("circuit_builder_kwargs", None)
+    circuit_builder_kwargs = sampling_dict.get("circuit_builder_kwargs", {})
     n_qubits = sampling_dict["n_qubits"]
     circ_builder = circuit_builder(n_qubits=n_qubits, stochastic=True, state_simulation=False,
                               **circuit_builder_kwargs)
     sampler = circuit_sampler(circ_builder, n_qubits=n_qubits, noise_specs=noise_specs, 
-                              verbose=False)
+                              verbose=False, **circuit_sampler_kwargs)
     all_prob_vec = np.empty((sampling_dict["n_samples"], 2**n_qubits, 2))
-    adj_T_shape = (sampling_dict["n_samples"], sampling_dict["adjT_dim"], n_qubits, n_qubits)
+    adj_T_shape = (sampling_dict["n_samples"],) +  sampling_dict["adjT_dim"]
     all_adj_T = np.empty(adj_T_shape)
     for i in range(sampling_dict["n_samples"]):
         if i%10 == 0:
