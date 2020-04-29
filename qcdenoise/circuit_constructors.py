@@ -104,7 +104,7 @@ class GraphCircuit(CircuitConstructor):
         self.graph_combs = self.generate_all_subgraphs()
         self.ops_labels = None
         self.stochastic = stochastic
-        self.circuit_name = "GraphState"
+        self.name = "GraphState"
         self.circuit_graph = None
 
     def check_largest(self, val):
@@ -204,6 +204,7 @@ class GraphCircuit(CircuitConstructor):
         if self.state_sim:
             self.circuit = circ
             return
+        circ.barrier()
         circ.measure(q_reg, c_reg)
         self.circuit = circ
 
@@ -221,7 +222,7 @@ class GHZCircuit(CircuitConstructor):
         super(GHZCircuit, self).__init__(**kwargs)
         self.ops_labels = None
         self.stochastic = stochastic
-        self.circuit_name = "GHZ"
+        self.name = "GHZ"
 
     def build_circuit(self):
         unitary_op = Operator(np.identity(4))
@@ -241,6 +242,7 @@ class GHZCircuit(CircuitConstructor):
         if self.state_sim:
             self.circuit = circ
             return
+        circ.barrier()
         circ.measure(q_reg, c_reg) #pylint: disable=no-member
         self.circuit = circ
 
@@ -250,7 +252,7 @@ class UCCSDCircuit(CircuitConstructor):
         super(UCCSDCircuit, self).__init__(**kwargs)
         self.ops_labels = None
         self.stochastic = stochastic
-        self.circuit_name = "UCCSD"
+        self.name = "UCCSD"
     
     def build_circuit(self):
         unitary_op = Operator(np.identity(4))
@@ -274,6 +276,7 @@ class UCCSDCircuit(CircuitConstructor):
         if self.state_sim:
             self.circuit = circ
             return
+        circ.barrier()
         circ.measure(q_reg, c_reg) #pylint: disable=no-member
         self.circuit = circ
 

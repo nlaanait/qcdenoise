@@ -22,7 +22,7 @@ def pool_shuffle_split(files_dir, file_expr, mode='train', split=0.8, delete=Tru
     for _ in range(5):
         np.random.shuffle(runs)
     if split > 0.999:
-        path = file_expr+'.npy'
+        path = os.path.join(files_dir, file_expr+'.npy')
         np.save(path, runs, allow_pickle=False)
         print('wrote {} with shape {}'.format(path, runs.shape))
         if delete:
@@ -42,13 +42,13 @@ def pool_shuffle_split(files_dir, file_expr, mode='train', split=0.8, delete=Tru
         part = int(runs.shape[0] * split)
         train = runs[:part]
         test = runs[part:]
-        path_train = file_expr+'train.npy' 
+        path_train = os.path.join(files_dir, file_expr+'_train.npy') 
         np.save(path_train, train, allow_pickle=False)
         print('wrote {} with shape {}'.format(path_train, train.shape))
-        path_test = file_expr+'test.npy' 
-        np.save(path_test, test, allow_pickle=False)
-        print('wrote {} with shape {}'.format(path_test, test.shape))
-    cond = os.path.exists(file_expr+'train.npy') and os.path.exists(file_expr+'test.npy')
+        path_dev = os.path.join(files_dir, file_expr+'_dev.npy') 
+        np.save(path_dev, test, allow_pickle=False)
+        print('wrote {} with shape {}'.format(path_dev, test.shape))
+    cond = os.path.exists(path_dev) and os.path.exists(path_train)
     if delete and cond:
         for file in files:
             file_path = os.path.join(files_dir, file)
@@ -61,7 +61,7 @@ def pool_shuffle_split(files_dir, file_expr, mode='train', split=0.8, delete=Tru
                 except subprocess.SubprocessError as e:
                     print("failed to rm %s" % file_path)
                     print(e)
-    return path_train, path_test
+    return path_train, path_dev
 
 def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=int(10e9), delete=True):
     env = lmdb.open(lmdb_path, map_size=lmdb_map_size, map_async=True, writemap=True, create=True)
@@ -115,7 +115,7 @@ def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=i
 
 class QCIRCDataSet(Dataset):
     """ QCIRC data set on lmdb."""
-    def __init__(self, lmdb_path, input_transform=None, target_transform=None,
+    def __init__(self, lmdb_path, pads= (0,0,0,0), input_transform=None, target_transform=None,
                                         debug=False):
         """__init__ [summary]
         
@@ -127,6 +127,7 @@ class QCIRCDataSet(Dataset):
             debug (bool, optional): [description]. Defaults to True.
         """
         self.debug = debug
+        self.pads = pads
         self.lmdb_path = lmdb_path
         self.env = lmdb.open(self.lmdb_path, create=False, readahead=False, readonly=True, writemap=False, lock=False)
         with self.env.begin(write=False) as txn:
@@ -195,7 +196,10 @@ class QCIRCDataSet(Dataset):
             if not isinstance(encodings, torch.Tensor):
                 encodings = torch.from_numpy(encodings)
             return {'input':inputs, 'target':targets, 'encoding': encodings}
-        return {'input':torch.from_numpy(inputs), 'target':torch.from_numpy(targets), 'encoding':torch.from_numpy(encodings)} #pylint: disable=no-member
+        encodings = torch.from_numpy(encodings)
+        pad = torch.nn.ConstantPad2d(self.pads, 0.0)
+        encodings = pad(encodings)
+        return {'input':torch.from_numpy(inputs), 'target':torch.from_numpy(targets), 'encoding':encodings} #pylint: disable=no-member
 
 
     def transform_target(self, targets):

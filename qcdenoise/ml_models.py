@@ -148,8 +148,8 @@ class AdjTModel(nn.Module):
 
 
 class AdjTAsymModel(nn.Module):
-  def __init__(self, inputs_dim=None, targets_dim=None, encodings_dim=None, 
-                     combine_mode='Add', asym_mode='dense', p_dropout=0.25):
+  def __init__(self, n_qubits, inputs_dim=None, targets_dim=None, encodings_dim=None, 
+                     combine_mode='Add', asym_mode='dense', out_c= 32, p_dropout=0.25):
     assert asym_mode in ['residual', 'dense'], 'asym_mode requested is not implemented'
     super(AdjTAsymModel, self).__init__()
     self.encodings_dim = encodings_dim
@@ -165,38 +165,39 @@ class AdjTAsymModel(nn.Module):
     self.fc6 = nn.Linear(256, 256)  
     self.fc7 = nn.Linear(256, targets_dim)
     # layers for adjacency tensor
-    adj_c = self.encodings_dim[2]
-    kern_v = [adj_c + adj_c%2 -1, 1]
+    adj_c = n_qubits 
+    kern = [3, 3]
+    pad = [kern[0]//2, kern[1]//2]
+    kern_v = [max(adj_c + adj_c%2 - 1, 3), 3]
     kern_h = kern_v[::-1]
     pad_v = [kern_v[0]//2, kern_v[1]//2]
     pad_h = pad_v[::-1]
     stride_v = [1,1]
     stride_h = stride_v[::-1]
-    out_c = 32
-    self.conv0 = nn.Conv2d(self.encodings_dim[0], out_c, 3, padding=3//2, bias=True)
+    self.conv0 = nn.Conv2d(self.encodings_dim[0], out_c, kern, padding=pad, bias=True)
     in_c = self.conv0.out_channels
     self.conv1_v = nn.Conv2d(in_c, out_c, kern_v, padding=pad_v, stride=stride_v, bias=False)
     self.conv1_h = nn.Conv2d(out_c, out_c, kern_h, padding=pad_h, stride=stride_h, bias=False)
     in_c = self.calc_in_c(in_c, self.conv1_h)
-    self.conv1 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    self.conv1 = nn.Conv2d(in_c, out_c * 2, kern, padding=pad, bias=False)
     in_c = self.conv1.out_channels
     self.bn1 = nn.BatchNorm2d(self.conv1.out_channels)
     self.conv2_v = nn.Conv2d(self.conv1.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
     self.conv2_h = nn.Conv2d(self.conv2_v.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
     in_c = self.calc_in_c(in_c, self.conv2_h) 
-    self.conv2 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    self.conv2 = nn.Conv2d(in_c, out_c * 2, kern, padding=pad, bias=False)
     in_c = self.conv2.out_channels
     self.bn2 = nn.BatchNorm2d(self.conv2.out_channels)
     self.conv3_v = nn.Conv2d(self.conv2.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
     self.conv3_h = nn.Conv2d(self.conv3_v.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
     in_c = self.calc_in_c(in_c, self.conv3_h)
-    self.conv3 = nn.Conv2d(in_c, out_c * 2, 3, padding=3//2, bias=False)
+    self.conv3 = nn.Conv2d(in_c, out_c * 2, kern, padding=pad, bias=False)
     in_c = self.conv3.out_channels
     self.bn3 = nn.BatchNorm2d(self.conv3.out_channels)
     self.conv4_v = nn.Conv2d(self.conv3.out_channels, out_c*2, kern_v, padding=pad_v, stride=stride_v, bias=False)
     self.conv4_h = nn.Conv2d(self.conv4_v.out_channels, out_c*2, kern_h, padding=pad_h, stride=stride_h, bias=False)
     in_c = self.calc_in_c(in_c, self.conv4_h)
-    self.conv4 = nn.Conv2d(in_c, self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]), 3, padding=3//2, 
+    self.conv4 = nn.Conv2d(in_c, max(self.targets_dim//(self.encodings_dim[1]*self.encodings_dim[2]),1), kern, padding=pad, 
                            bias=False)
     self.bn4 = nn.BatchNorm2d(self.conv4.out_channels)
     adjT_shape, prob_shape = self.test_forward(torch.zeros([1]+[inputs_dim]), torch.zeros([1]+list(self.encodings_dim)))
@@ -266,6 +267,15 @@ class AdjTAsymModel(nn.Module):
     x = F.relu(self.fcFinal(x))
     return x
 
+  def dense_block_forked(self, x, bn, conv, conv_h, conv_v):
+    out = x
+    x_v = F.relu(conv_v(x))
+    x_h = F.relu(conv_h(x))
+    x = x_v * x_h
+    x = torch.cat([out,x], dim=1)
+    x = F.relu(bn(conv(x)))
+    return x
+
   def dense_block(self, x, bn, conv, conv_h, conv_v):
     out = x
     x = F.relu(conv_v(x))
@@ -305,5 +315,5 @@ if __name__ == "__main__":
   inputs_dim = 256
   targets_dim = 256
   encodings_dim = [8,8,8]
-  net = AdjTAsymModel(inputs_dim=inputs_dim, targets_dim=targets_dim, encodings_dim=encodings_dim)
+  net = AdjTAsymModel(8, inputs_dim=inputs_dim, targets_dim=targets_dim, encodings_dim=encodings_dim)
   print(net)
