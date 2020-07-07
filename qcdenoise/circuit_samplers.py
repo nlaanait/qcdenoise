@@ -165,8 +165,11 @@ class CircuitSampler:
             "coupling_map": self.coupling,
             "basis_gates": basis_gates,
             "callback": get_dag}
-        if not optimize:
-            trans_args["optimization"] = 0
+       
+        if optimize:
+            trans_args["optimization_level"] = 3
+        else:
+            trans_args["optimization_level"] = 0
 
         self.mapd_circuit = qk.transpile(
             self.circuit.decompose(), **trans_args)
