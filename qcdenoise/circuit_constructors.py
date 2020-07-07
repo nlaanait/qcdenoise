@@ -17,14 +17,14 @@ np.random.seed(seed)
 random.seed(seed)
 
 def partitions(n, start=2):
-    """Return all possible partitions of integer n
-    
+    """Return all possible partitions of integer n.
+
     Arguments:
         n {int} -- integer
-    
+
     Keyword Arguments:
         start {int} -- starting position (default: {2})
-    
+
     Yields:
         tuple -- returns tuples of partitions
     """
@@ -35,8 +35,8 @@ def partitions(n, start=2):
 
 
 class CircuitConstructor:
-    """Parent class of constructing circuits
-    
+    """Parent class of constructing circuits.
+
     Raises:
         NotImplementedError: build_circuit() must be overriden by child class
         NotImplementedError: estimate_entanglement() must be overriden by child class
@@ -67,26 +67,24 @@ class CircuitConstructor:
                     fp.write(line)
         return
 
-    def execute_circuit(self):
-        """execute circuit with state_vector sim 
-        """ 
+    def get_statevector(self):
+        """execute circuit with state_vector sim.""" 
         self.statevec=qk.execute(self.circuit,\
                                 backend=qk.Aer.get_backend('statevector_simulator'),
                                 shots=self.n_shots).result().get_statevector()
         return
 
     def estimate_entanglement(self):
-        """estimate entanglement of final state
-        using n-qubit entanglement winessess
-        if circuit was prepared as GHZ state then assume maximally entangled
-        if circuit was prepared as random graph state then use witnesses
-        """
+        """estimate entanglement of final state using n-qubit entanglement
+        winessess if circuit was prepared as GHZ state then assume maximally
+        entangled if circuit was prepared as random graph state then use
+        witnesses."""
         raise NotImplementedError
 
 
 class GraphCircuit(CircuitConstructor):
-    """Class to construct circuits from graph states
-    
+    """Class to construct circuits from graph states.
+
     Arguments:
         CircuitConstructor {Parent class} -- abstract class
     """
@@ -185,6 +183,24 @@ class GraphCircuit(CircuitConstructor):
                 self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
             self._build_controlled_phase_gate(circuit_graph)
 
+    def build_circuit_from_graph(self, circuit_graph, graph_plot=False):
+        """construct a circuit from a provided networkx.DiGrap.
+
+        Args:
+            circuit_graph (networkx.DiGraph): networkx directed Graph.
+            graph_plot (bool, optional): plot the circuit graph. Defaults to False.
+        """
+        assert isinstance(circuit_graph, nx.DiGraph), "circuit_graph must be an instance of networkx.DiGraph"
+        self.circuit_graph = circuit_graph
+        nx.draw_circular(circuit_graph, **nx_plot_options)
+        # Build a circuit from the graph state
+        if self.gate_type == "Controlled_Phase":
+            if self.stochastic:
+                self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
+            else:
+                self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
+            self._build_controlled_phase_gate(circuit_graph)
+        
     def _build_controlled_phase_gate(self, graph):
         unitary_op = Operator(np.identity(4))
         q_reg = qk.QuantumRegister(self.n_qubits)
@@ -209,7 +225,8 @@ class GraphCircuit(CircuitConstructor):
         self.circuit = circ
 
     def get_sorted_db(self):
-        sorted_dict = dict([(i, []) for i in range(1,len(self.graph_db.keys()))])
+        sorted_dict = dict([(i, []) for i in range(1, len(self.graph_db.keys()) \
+            + 1)])
         for _, itm in self.graph_db.items():
             if itm["G"] is not None:
                 sorted_key = len(itm["G"].nodes)
