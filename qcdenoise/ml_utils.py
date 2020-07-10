@@ -52,7 +52,7 @@ def train_Dense(net, dataloader, loss_func, dev_num=0, lr=1e-4, weight_decay=1e-
             if batch_num % batch_log == batch_log - 1:    
                 print('Epoch={}, Batch={:5d}, Loss= {:.3f}'.format(epoch + 1, batch_num + 1, running_loss / batch_log))
                 running_loss = 0.0
-        if epoch % test_epoch == test_epoch - 1:
+        if epoch % test_epoch == 0 and epoch != 0:
             if test_func_args:
                 opt_state = optimizer.state_dict()
                 net.eval()
@@ -72,6 +72,8 @@ def test_Dense(net, dataloader, loss_func, dev_num=0):
     device = torch.device(dev_name if torch.cuda.is_available() else "cpu") #pylint: disable=no-member
     with torch.no_grad():
         for batch_num, batch in enumerate(dataloader):
+            if batch_num > 10:
+                return
             # data
             inputs, targets = batch['input'], batch['target']
             inputs = inputs.to(device)
@@ -114,9 +116,11 @@ def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1
     running_loss = 0.0 
     dev_name = "cuda:%d" %dev_num
     device = torch.device(dev_name if torch.cuda.is_available() else "cpu") #pylint: disable=no-member
+    net.to(device)
     logs = {'lr':[], 'epoch':[], 'step':[], 'loss':[], 'test_loss':[], 'test_step':[]}
     opt_state = None
     step = 0
+    epoch_test = test_epoch
     if test_func_args:
         opt_state = optimizer.state_dict()
         epoch_test = test_epoch
@@ -137,7 +141,6 @@ def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1
             inputs = inputs.to(device)
             targets = targets.to(device)
             encodings = encodings.to(device)
-            net = net.to(device)
             # forward
             optimizer.zero_grad()
             outputs = net(inputs, encodings)
@@ -152,7 +155,7 @@ def train_adjT(net, dataloader, loss_func, scheduler, optimizer, dev_num=0, lr=1
                 logs['epoch'].append(epoch+1)
                 logs['step'].append(step)
                 logs['loss'].append(running_loss/step_log)    
-                print('Epoch={}, Lr= {:5f}, Step={:5d}, Loss={:.3f}'.format(logs['epoch'][-1], logs['lr'][-1], 
+                print('Epoch={}, Lr= {:5f}, Step={:5d}, Loss={:.5f}'.format(logs['epoch'][-1], logs['lr'][-1], 
                       logs['step'][-1], logs['loss'][-1]))
                 running_loss = 0.0
         if epoch % test_epoch == test_epoch - 1:
