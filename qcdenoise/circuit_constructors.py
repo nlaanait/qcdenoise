@@ -171,6 +171,39 @@ class GraphCircuit(CircuitConstructor):
             self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
             self._build_Scontrolled_phase_gate(circuit_graph)
 
+    def sigma_prod(op_str):
+        from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
+        from sympy import I
+        pauli_dict= {"I":"I","X":Pauli(1), "Y":Pauli(2),"Z":Pauli(3)}
+        pauli_label = {Pauli(1):"X",Pauli(2):"Y",Pauli(3):"Z","I":"I"}
+        op_list=list(op_str)
+        if ('X' not in op_str) and ('Y' not in op_str) and ('Z' not in op_str):
+            mat3='I'
+            coef=np.complex(1,0)
+        pauli_list = [pauli_dict[x] for x in op_list]
+        coef_list = []
+        while len(pauli_list)>1:
+            mat1=pauli_list.pop()
+            mat2=pauli_list.pop()
+            if mat1==mat2:
+                mat3='I'
+                coef=np.complex(1,0)
+            elif 'I' not in [mat1,mat2]:
+                mat3=evaluate_pauli_product(mat2*mat1).args[-1]
+                coef=evaluate_pauli_product(mat2*mat1).args[:-1]
+                if coef==(I,):
+                    coef=np.complex(0,1)
+                elif coef==(-1,I):
+                    coef=np.complex(0,-1)
+                else:
+                    coef=np.complex(1,0)
+            else:
+                mat3=[x for x in [mat1,mat2] if x!='I'][0]
+                coef=np.complex(1,0)
+            coef_list.append(coef)
+            pauli_list.append(mat3)
+        return np.prod(np.asarray(coef_list)),[pauli_label[x] for x in pauli_list][0]
+        
     def get_generators(self):
         """ get generators of the graph state stabilizers
         generators are n-length strings (n = number of qubits)"""
@@ -184,23 +217,35 @@ class GraphCircuit(CircuitConstructor):
             generators.append(temp)
         self.generators = generators
 
-
     def get_stabilizers(self):
         """ get the stabilizer operators for a graph state """
-        stabilizers = []
-        binary_keys = [np.binary_repr(x,self.n_qubits) \
-                                for x in range(2**self.n_qubits)]
-        # 'IIII...' operator always included, this corresponds to binary key '000...'
-        stabilizers.append('+I'*n_qubits)
+        binary_keys = [np.binary_repr(x,self.n_qubits) for x in range(2**self.n_qubits)]
+        stab_label = []
         for idx in binary_keys:
             coefs = [int(x) for x in list(idx)]
-            temp = []
-            for jdx in coefs:
-                if jdx==0:
-                    temp.append('I')
+            op_mat = []
+            for jdx in range(len(coefs)):
+                if coefs[jdx]==0:
+                    op_mat.append(list('I'*self.n_qubits))
                 else:
-                    pass
-        self.stabilizers = stabilizers
+                    op_mat.append(list(self.generators[jdx]))
+            op_mat = np.asarray(op_mat)
+            cf_arr = []
+            lb_arr = []
+            for kdx in range(op_mat.shape[0]):
+                cf,lb = sigma_prod(''.join(op_mat[:,kdx]))
+                cf_arr.append(cf)
+                lb_arr.append(lb)
+            if np.iscomplex(np.prod(cf_arr)):
+                print("Flag-error, coefficient cannot be complex")
+                return
+            else:
+                val = np.prod(cf_arr)
+                if np.real(val)==1:
+                    stab_label.append('+'+''.join(lb_arr))
+                else:
+                    stab_label.append('-'+''.join(lb_arr))
+        self.stabilizers = stab_label
 
     def _build_controlled_phase_gate(self, graph):
         q_reg = qk.QuantumRegister(self.n_qubits)
