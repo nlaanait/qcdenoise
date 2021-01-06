@@ -188,8 +188,20 @@ class GraphCircuit(CircuitConstructor):
     def get_stabilizers(self):
         """ get the stabilizer operators for a graph state """
         stabilizers = []
+        binary_keys = [np.binary_repr(x,self.n_qubits) \
+                                for x in range(2**self.n_qubits)]
+        # 'IIII...' operator always included, this corresponds to binary key '000...'
+        stabilizers.append('+I'*n_qubits)
+        for idx in binary_keys:
+            coefs = [int(x) for x in list(idx)]
+            temp = []
+            for jdx in coefs:
+                if jdx==0:
+                    temp.append('I')
+                else:
+                    pass
+        self.stabilizers = stabilizers
 
-        return stabilizers
     def _build_controlled_phase_gate(self, graph):
         q_reg = qk.QuantumRegister(self.n_qubits)
         c_reg = qk.ClassicalRegister(self.n_qubits)
