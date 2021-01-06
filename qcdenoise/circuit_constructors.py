@@ -160,6 +160,7 @@ class GraphCircuit(CircuitConstructor):
         sub_graphs = self.pick_subgraphs()
         # 2. Combine subgraphs into a single circuit graph
         circuit_graph = self.combine_subgraphs(sub_graphs)
+        self.circuit_graph = circuit_graph
         if graph_plot and _plots:
             nx.draw_circular(circuit_graph, **nx_plot_options)
         # 3. Build a circuit from the graph state
@@ -170,6 +171,25 @@ class GraphCircuit(CircuitConstructor):
             self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
             self._build_Scontrolled_phase_gate(circuit_graph)
 
+    def get_generators(self):
+        """ get generators of the graph state stabilizers
+        generators are n-length strings (n = number of qubits)"""
+        generators = []
+        for idx in self.circuit_graph.nodes():
+            temp = list('I'*self.circuit_graph.order())
+            temp[vdx]='X'
+            for jdx in self.circuit_graph.neighbors(idx):
+                temp[jdx]='Z'
+            temp = "".join(temp)
+            generators.append(temp)
+        self.generators = generators
+
+
+    def get_stabilizers(self):
+        """ get the stabilizer operators for a graph state """
+        stabilizers = []
+        
+        return stabilizers
 
     def _build_controlled_phase_gate(self, graph):
         q_reg = qk.QuantumRegister(self.n_qubits)
