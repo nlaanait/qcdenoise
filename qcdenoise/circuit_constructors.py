@@ -16,13 +16,13 @@ np.random.seed(seed)
 
 def partitions(n, start=2):
     """Return all possible partitions of integer n
-    
+
     Arguments:
         n {int} -- integer
-    
+
     Keyword Arguments:
         start {int} -- starting position (default: {2})
-    
+
     Yields:
         tuple -- returns tuples of partitions
     """
@@ -34,12 +34,12 @@ def partitions(n, start=2):
 
 class CircuitConstructor:
     """Parent class of constructing circuits
-    
+
     Raises:
         NotImplementedError: build_circuit() must be overriden by child class
         NotImplementedError: estimate_entanglement() must be overriden by child class
     """
-    def __init__(self,n_qubits= 2, n_shots=1024, verbose=False, 
+    def __init__(self,n_qubits= 2, n_shots=1024, verbose=False,
                  state_simulation=True, save_to_file=False):
         self.n_qubits = n_qubits
         self.n_shots = n_shots
@@ -50,14 +50,14 @@ class CircuitConstructor:
         self.circuit =  None
         self.state_sim = state_simulation
         self.counts = None
-    
+
     def print_verbose(self, *args, **kwargs):
         if self.verbose:
             print(*args, **kwargs)
 
     def build_circuit(self):
         raise NotImplementedError
-    
+
     def save_circuit(self):
         if self.save_to_file and self.circuit is not None:
             with open('circuit_'+self.runtime+'.txt','w') as fp:
@@ -66,15 +66,15 @@ class CircuitConstructor:
         return
 
     def execute_circuit(self):
-        """execute circuit with state_vector sim 
-        """ 
+        """execute circuit with state_vector sim
+        """
         if self.state_sim:
             self.statevec=qk.execute(self.circuit,\
                                     backend=qk.Aer.get_backend('statevector_simulator'),
                                     shots=self.n_shots).result().get_statevector()
         else:
-            self.counts = qk.execute(self.circuit, 
-                                    backend=qk.Aer.get_backend('qasm_simulator'), 
+            self.counts = qk.execute(self.circuit,
+                                    backend=qk.Aer.get_backend('qasm_simulator'),
                                     seed_simulator=seed, shots=self.n_shots).result().get_counts()
         return
 
@@ -89,11 +89,11 @@ class CircuitConstructor:
 
 class GraphCircuit(CircuitConstructor):
     """Class to construct circuits from graph states
-    
+
     Arguments:
         CircuitConstructor {Parent class} -- abstract class
     """
-    def __init__(self, graph_db=GraphDB(), gate_type="Controlled_Phase", smallest_subgraph=2, 
+    def __init__(self, graph_db=GraphDB(), gate_type="Controlled_Phase", smallest_subgraph=2,
                        largest_subgraph=None, **kwargs):
         super(GraphCircuit, self).__init__(**kwargs)
         if isinstance(graph_db, GraphDB):
@@ -109,15 +109,15 @@ class GraphCircuit(CircuitConstructor):
     def check_largest(self, val):
         for key, itm in self.all_graphs.items():
                 if len(itm) != 0:
-                    max_subgraph = key 
+                    max_subgraph = key
         if val is None:
-            return max_subgraph 
+            return max_subgraph
         if val > max_subgraph:
             warnings.warn("The largest possible subgraph in the database has %s nodes" %max_subgraph)
             warnings.warn("Resetting largest possible subgraph: %s --> %s" %(val, max_subgraph))
             return max_subgraph
         return val
-            
+
     def generate_all_subgraphs(self):
         combs = list(set(partitions(self.n_qubits, start=self.smallest_subgraph)))
         for (itm, comb) in enumerate(combs):
@@ -134,10 +134,10 @@ class GraphCircuit(CircuitConstructor):
             if union_nodes > 1:
                 first_node = random.randint(0, union_graph.order() - 1)
                 offset = len(sub_g.nodes)
-                second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1,sub_g.order()) 
-                #second_node = random.randint(union_nodes, offset + union_nodes - 1)    
+                second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1,sub_g.order())
+                #second_node = random.randint(union_nodes, offset + union_nodes - 1)
                 union_graph = nx.disjoint_union(union_graph, sub_g)
-                #union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)]) 
+                #union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)])
                 for idx in second_nodes:
                     union_graph.add_weighted_edges_from([(first_node, idx, 1.0)])
             else:
@@ -160,6 +160,7 @@ class GraphCircuit(CircuitConstructor):
         sub_graphs = self.pick_subgraphs()
         # 2. Combine subgraphs into a single circuit graph
         circuit_graph = self.combine_subgraphs(sub_graphs)
+        self.circuit_graph = circuit_graph
         if graph_plot and _plots:
             nx.draw_circular(circuit_graph, **nx_plot_options)
         # 3. Build a circuit from the graph state
@@ -170,7 +171,25 @@ class GraphCircuit(CircuitConstructor):
             self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
             self._build_Scontrolled_phase_gate(circuit_graph)
 
+    def get_generators(self):
+        """ get generators of the graph state stabilizers
+        generators are n-length strings (n = number of qubits)"""
+        generators = []
+        for idx in self.circuit_graph.nodes():
+            temp = list('I'*self.circuit_graph.order())
+            temp[vdx]='X'
+            for jdx in self.circuit_graph.neighbors(idx):
+                temp[jdx]='Z'
+            temp = "".join(temp)
+            generators.append(temp)
+        self.generators = generators
 
+
+    def get_stabilizers(self):
+        """ get the stabilizer operators for a graph state """
+        stabilizers = []
+        
+        return stabilizers
     def _build_controlled_phase_gate(self, graph):
         q_reg = qk.QuantumRegister(self.n_qubits)
         c_reg = qk.ClassicalRegister(self.n_qubits)
@@ -219,8 +238,8 @@ class GraphCircuit(CircuitConstructor):
                 sorted_key = len(itm["G"].nodes)
                 sorted_dict[sorted_key].append(itm["G"])
         return sorted_dict
-     
-    
+
+
 if __name__ == "__main__":
     # Build example set of random circuits
     circ_builder = GraphCircuit()
