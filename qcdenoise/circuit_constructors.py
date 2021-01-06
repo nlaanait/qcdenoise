@@ -188,7 +188,7 @@ class GraphCircuit(CircuitConstructor):
     def get_stabilizers(self):
         """ get the stabilizer operators for a graph state """
         stabilizers = []
-        
+
         return stabilizers
     def _build_controlled_phase_gate(self, graph):
         q_reg = qk.QuantumRegister(self.n_qubits)
