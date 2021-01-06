@@ -16,13 +16,13 @@ np.random.seed(seed)
 
 def partitions(n, start=2):
     """Return all possible partitions of integer n
-    
+
     Arguments:
         n {int} -- integer
-    
+
     Keyword Arguments:
         start {int} -- starting position (default: {2})
-    
+
     Yields:
         tuple -- returns tuples of partitions
     """
@@ -34,12 +34,12 @@ def partitions(n, start=2):
 
 class CircuitConstructor:
     """Parent class of constructing circuits
-    
+
     Raises:
         NotImplementedError: build_circuit() must be overriden by child class
         NotImplementedError: estimate_entanglement() must be overriden by child class
     """
-    def __init__(self,n_qubits= 2, n_shots=1024, verbose=False, 
+    def __init__(self,n_qubits= 2, n_shots=1024, verbose=False,
                  state_simulation=True, save_to_file=False):
         self.n_qubits = n_qubits
         self.n_shots = n_shots
@@ -50,14 +50,14 @@ class CircuitConstructor:
         self.circuit =  None
         self.state_sim = state_simulation
         self.counts = None
-    
+
     def print_verbose(self, *args, **kwargs):
         if self.verbose:
             print(*args, **kwargs)
 
     def build_circuit(self):
         raise NotImplementedError
-    
+
     def save_circuit(self):
         if self.save_to_file and self.circuit is not None:
             with open('circuit_'+self.runtime+'.txt','w') as fp:
@@ -66,15 +66,15 @@ class CircuitConstructor:
         return
 
     def execute_circuit(self):
-        """execute circuit with state_vector sim 
-        """ 
+        """execute circuit with state_vector sim
+        """
         if self.state_sim:
             self.statevec=qk.execute(self.circuit,\
                                     backend=qk.Aer.get_backend('statevector_simulator'),
                                     shots=self.n_shots).result().get_statevector()
         else:
-            self.counts = qk.execute(self.circuit, 
-                                    backend=qk.Aer.get_backend('qasm_simulator'), 
+            self.counts = qk.execute(self.circuit,
+                                    backend=qk.Aer.get_backend('qasm_simulator'),
                                     seed_simulator=seed, shots=self.n_shots).result().get_counts()
         return
 
@@ -89,11 +89,11 @@ class CircuitConstructor:
 
 class GraphCircuit(CircuitConstructor):
     """Class to construct circuits from graph states
-    
+
     Arguments:
         CircuitConstructor {Parent class} -- abstract class
     """
-    def __init__(self, graph_db=GraphDB(), gate_type="Controlled_Phase", smallest_subgraph=2, 
+    def __init__(self, graph_db=GraphDB(), gate_type="Controlled_Phase", smallest_subgraph=2,
                        largest_subgraph=None, **kwargs):
         super(GraphCircuit, self).__init__(**kwargs)
         if isinstance(graph_db, GraphDB):
@@ -109,15 +109,15 @@ class GraphCircuit(CircuitConstructor):
     def check_largest(self, val):
         for key, itm in self.all_graphs.items():
                 if len(itm) != 0:
-                    max_subgraph = key 
+                    max_subgraph = key
         if val is None:
-            return max_subgraph 
+            return max_subgraph
         if val > max_subgraph:
             warnings.warn("The largest possible subgraph in the database has %s nodes" %max_subgraph)
             warnings.warn("Resetting largest possible subgraph: %s --> %s" %(val, max_subgraph))
             return max_subgraph
         return val
-            
+
     def generate_all_subgraphs(self):
         combs = list(set(partitions(self.n_qubits, start=self.smallest_subgraph)))
         for (itm, comb) in enumerate(combs):
@@ -134,10 +134,10 @@ class GraphCircuit(CircuitConstructor):
             if union_nodes > 1:
                 first_node = random.randint(0, union_graph.order() - 1)
                 offset = len(sub_g.nodes)
-                second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1,sub_g.order()) 
-                #second_node = random.randint(union_nodes, offset + union_nodes - 1)    
+                second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1,sub_g.order())
+                #second_node = random.randint(union_nodes, offset + union_nodes - 1)
                 union_graph = nx.disjoint_union(union_graph, sub_g)
-                #union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)]) 
+                #union_graph.add_weighted_edges_from([(first_node, second_node, 1.0)])
                 for idx in second_nodes:
                     union_graph.add_weighted_edges_from([(first_node, idx, 1.0)])
             else:
@@ -160,6 +160,7 @@ class GraphCircuit(CircuitConstructor):
         sub_graphs = self.pick_subgraphs()
         # 2. Combine subgraphs into a single circuit graph
         circuit_graph = self.combine_subgraphs(sub_graphs)
+        self.circuit_graph = circuit_graph
         if graph_plot and _plots:
             nx.draw_circular(circuit_graph, **nx_plot_options)
         # 3. Build a circuit from the graph state
@@ -170,6 +171,81 @@ class GraphCircuit(CircuitConstructor):
             self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
             self._build_Scontrolled_phase_gate(circuit_graph)
 
+    def sigma_prod(op_str):
+        from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
+        from sympy import I
+        pauli_dict= {"I":"I","X":Pauli(1), "Y":Pauli(2),"Z":Pauli(3)}
+        pauli_label = {Pauli(1):"X",Pauli(2):"Y",Pauli(3):"Z","I":"I"}
+        op_list=list(op_str)
+        if ('X' not in op_str) and ('Y' not in op_str) and ('Z' not in op_str):
+            mat3='I'
+            coef=np.complex(1,0)
+        pauli_list = [pauli_dict[x] for x in op_list]
+        coef_list = []
+        while len(pauli_list)>1:
+            mat1=pauli_list.pop()
+            mat2=pauli_list.pop()
+            if mat1==mat2:
+                mat3='I'
+                coef=np.complex(1,0)
+            elif 'I' not in [mat1,mat2]:
+                mat3=evaluate_pauli_product(mat2*mat1).args[-1]
+                coef=evaluate_pauli_product(mat2*mat1).args[:-1]
+                if coef==(I,):
+                    coef=np.complex(0,1)
+                elif coef==(-1,I):
+                    coef=np.complex(0,-1)
+                else:
+                    coef=np.complex(1,0)
+            else:
+                mat3=[x for x in [mat1,mat2] if x!='I'][0]
+                coef=np.complex(1,0)
+            coef_list.append(coef)
+            pauli_list.append(mat3)
+        return np.prod(np.asarray(coef_list)),[pauli_label[x] for x in pauli_list][0]
+        
+    def get_generators(self):
+        """ get generators of the graph state stabilizers
+        generators are n-length strings (n = number of qubits)"""
+        generators = []
+        for idx in self.circuit_graph.nodes():
+            temp = list('I'*self.circuit_graph.order())
+            temp[vdx]='X'
+            for jdx in self.circuit_graph.neighbors(idx):
+                temp[jdx]='Z'
+            temp = "".join(temp)
+            generators.append(temp)
+        self.generators = generators
+
+    def get_stabilizers(self):
+        """ get the stabilizer operators for a graph state """
+        binary_keys = [np.binary_repr(x,self.n_qubits) for x in range(2**self.n_qubits)]
+        stab_label = []
+        for idx in binary_keys:
+            coefs = [int(x) for x in list(idx)]
+            op_mat = []
+            for jdx in range(len(coefs)):
+                if coefs[jdx]==0:
+                    op_mat.append(list('I'*self.n_qubits))
+                else:
+                    op_mat.append(list(self.generators[jdx]))
+            op_mat = np.asarray(op_mat)
+            cf_arr = []
+            lb_arr = []
+            for kdx in range(op_mat.shape[0]):
+                cf,lb = sigma_prod(''.join(op_mat[:,kdx]))
+                cf_arr.append(cf)
+                lb_arr.append(lb)
+            if np.iscomplex(np.prod(cf_arr)):
+                print("Flag-error, coefficient cannot be complex")
+                return
+            else:
+                val = np.prod(cf_arr)
+                if np.real(val)==1:
+                    stab_label.append('+'+''.join(lb_arr))
+                else:
+                    stab_label.append('-'+''.join(lb_arr))
+        self.stabilizers = stab_label
 
     def _build_controlled_phase_gate(self, graph):
         q_reg = qk.QuantumRegister(self.n_qubits)
@@ -219,8 +295,8 @@ class GraphCircuit(CircuitConstructor):
                 sorted_key = len(itm["G"].nodes)
                 sorted_dict[sorted_key].append(itm["G"])
         return sorted_dict
-     
-    
+
+
 if __name__ == "__main__":
     # Build example set of random circuits
     circ_builder = GraphCircuit()
