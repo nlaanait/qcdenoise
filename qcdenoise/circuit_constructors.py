@@ -199,14 +199,12 @@ class GraphCircuit(CircuitConstructor):
         # 3. Build a circuit from the graph state
         if self.gate_type == "Controlled_Phase":
             self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
-            self.print_verbose("If circuit graph is undirected, then one arc chosen arbitrarily")
             self._build_controlled_phase_gate(circuit_graph)
         elif self.gate_type == "SControlled_Phase": # same as controlled phase gate but w/ Stochastic unitary gates after CNOT
             self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
             self._build_Scontrolled_phase_gate(circuit_graph)
         elif self.gate_type == "Controlled_Z": # same as controlled phase gate but w/ Stochastic unitary gates after CNOT
             self.print_verbose("Assigning a Controlled Z gate to Node Edges")
-            self.print_verbose("If circuit graph is undirected, then one arc chosen arbitrarily")
             self._build_controlled_Z_gate(circuit_graph)
 
     def get_generators(self):
