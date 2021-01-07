@@ -11,6 +11,9 @@ from qiskit.quantum_info.operators import Operator
 
 from .graph_states import GraphDB, _plots, nx_plot_options
 
+from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
+from sympy import I
+
 global seed
 seed = 1234
 np.random.seed(seed)
@@ -33,8 +36,6 @@ def partitions(n, start=2):
              yield (i,) + p
 
 def sigma_prod(op_str):
-    from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
-    from sympy import I
     pauli_dict= {"I":"I","X":Pauli(1), "Y":Pauli(2),"Z":Pauli(3)}
     pauli_label = {Pauli(1):"X",Pauli(2):"Y",Pauli(3):"Z","I":"I"}
     op_list=list(op_str)
