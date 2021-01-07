@@ -1,28 +1,54 @@
-from time import time
 import os
-import subprocess
-import shlex
 import random
+import shlex
+import subprocess
+from time import time
+
 import lmdb
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 #pylint: disable=no-member
+global seed
+seed = 1234
+np.random.seed(seed)
+random.seed(seed)
 
-def pool_shuffle_split(files_dir, file_expr, split=0.8, delete=True):
+def pool_shuffle_split(files_dir, file_expr, mode='train', split=0.8, delete=True):
     files = os.listdir(files_dir)
     files = [file for file in files if file_expr in file]
     runs = np.concatenate([np.load(os.path.join(files_dir, file), mmap_mode='r') for file in files])
-    np.random.shuffle(runs)
-    part = int(runs.shape[0] * split)
-    train = runs[:part]
-    test = runs[part:]
-    np.save(file_expr+'train.npy', train, allow_pickle=False)
-    print('wrote {} with shape {}'.format(file_expr+'train.npy', train.shape))
-    np.save(file_expr+'test.npy', test, allow_pickle=False)
-    print('wrote {} with shape {}'.format(file_expr+'test.npy', test.shape))
-    cond = os.path.exists(file_expr+'train.npy') and os.path.exists(file_expr+'test.npy')
+    for _ in range(5):
+        np.random.shuffle(runs)
+    if split > 0.999:
+        path = os.path.join(files_dir, file_expr+'.npy')
+        np.save(path, runs, allow_pickle=False)
+        print('wrote {} with shape {}'.format(path, runs.shape))
+        if delete:
+            for file in files:
+                file_path = os.path.join(files_dir, file)
+                args = "rm %s" %file_path
+                args = shlex.split(args)
+                if os.path.exists(file_path):
+                    try:
+                        subprocess.run(args, check=True, timeout=120)
+                        print("rm %s" % file_path)
+                    except subprocess.SubprocessError as e:
+                        print("failed to rm %s" % file_path)
+                        print(e) 
+        return path 
+    else:
+        part = int(runs.shape[0] * split)
+        train = runs[:part]
+        test = runs[part:]
+        path_train = os.path.join(files_dir, file_expr+'_train.npy') 
+        np.save(path_train, train, allow_pickle=False)
+        print('wrote {} with shape {}'.format(path_train, train.shape))
+        path_dev = os.path.join(files_dir, file_expr+'_dev.npy') 
+        np.save(path_dev, test, allow_pickle=False)
+        print('wrote {} with shape {}'.format(path_dev, test.shape))
+    cond = os.path.exists(path_dev) and os.path.exists(path_train)
     if delete and cond:
         for file in files:
             file_path = os.path.join(files_dir, file)
@@ -35,8 +61,9 @@ def pool_shuffle_split(files_dir, file_expr, split=0.8, delete=True):
                 except subprocess.SubprocessError as e:
                     print("failed to rm %s" % file_path)
                     print(e)
+    return path_train, path_dev
 
-def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=int(10e9)):
+def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=int(10e9), delete=True):
     env = lmdb.open(lmdb_path, map_size=lmdb_map_size, map_async=True, writemap=True, create=True)
     prob_data = np.load(prob_data_path, mmap_mode='r')
     adjT_data = np.load(adjT_data_path, mmap_mode='r')
@@ -74,10 +101,21 @@ def prob_adjT_to_lmdb(lmdb_path, prob_data_path, adjT_data_path, lmdb_map_size=i
         txn.put(b"num_samples", bytes('%s' %str(idx+1), "ascii"))
         env.sync()
     print('wrote lmdb database in %s' % lmdb_path)
+    if delete:
+        for file_path in [prob_data_path, adjT_data_path]:
+            args = "rm %s" %file_path
+            args = shlex.split(args)
+            if os.path.exists(file_path):
+                try:
+                    subprocess.run(args, check=True, timeout=120)
+                    print("rm %s" % file_path)
+                except subprocess.SubprocessError as e:
+                    print("failed to rm %s" % file_path)
+                    print(e)
 
 class QCIRCDataSet(Dataset):
     """ QCIRC data set on lmdb."""
-    def __init__(self, lmdb_path, input_transform=None, target_transform=None,
+    def __init__(self, lmdb_path, pads= (0,0,0,0), input_transform=None, target_transform=None,
                                         debug=False):
         """__init__ [summary]
         
@@ -89,6 +127,7 @@ class QCIRCDataSet(Dataset):
             debug (bool, optional): [description]. Defaults to True.
         """
         self.debug = debug
+        self.pads = pads
         self.lmdb_path = lmdb_path
         self.env = lmdb.open(self.lmdb_path, create=False, readahead=False, readonly=True, writemap=False, lock=False)
         with self.env.begin(write=False) as txn:
@@ -102,7 +141,9 @@ class QCIRCDataSet(Dataset):
             input_name = txn.get(b"input_name").decode("ascii")
             encoding_name = txn.get(b"encoding_name").decode("ascii")
             self.num_samples = int(txn.get(b"num_samples").decode("ascii"))
-        self.records = range(0, self.num_samples) 
+        self.records = np.arange(0, self.num_samples, dtype=np.int) 
+        for _ in range(10):
+            np.random.shuffle(self.records)
         self.data_specs={'input_shape': list(input_shape), 'target_shape': list(target_shape), 'encoding_shape': list(encoding_shape),
                          'target_dtype':target_dtype, 'input_dtype': input_dtype, 'encoding_dtype': encoding_dtype,
                          'target_key':target_name, 'input_key': input_name, 'encoding_key': encoding_name}
@@ -155,7 +196,10 @@ class QCIRCDataSet(Dataset):
             if not isinstance(encodings, torch.Tensor):
                 encodings = torch.from_numpy(encodings)
             return {'input':inputs, 'target':targets, 'encoding': encodings}
-        return {'input':torch.from_numpy(inputs), 'target':torch.from_numpy(targets), 'encoding':torch.from_numpy(encodings)} #pylint: disable=no-member
+        encodings = torch.from_numpy(encodings)
+        pad = torch.nn.ConstantPad2d(self.pads, 0.0)
+        encodings = pad(encodings)
+        return {'input':torch.from_numpy(inputs), 'target':torch.from_numpy(targets), 'encoding':encodings} #pylint: disable=no-member
 
 
     def transform_target(self, targets):
