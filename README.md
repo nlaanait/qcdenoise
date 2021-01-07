@@ -1,29 +1,22 @@
-# qcdenoise 
+## ``qcdenoise``
 
-Machine Learning-based error mitigation of gate-based quantum computers
+(Classical) Machine Learning-based error mitigation of gate-based quantum computers
 
-Note: current access is Internal, will be upgraded to Public in future
-
-## Install 
+### Install 
 To install `qcdenoise`
 ```
-git clone git@code.ornl.gov:k8h/gsn_denoisers.git
-cd gsn_denoisers
-```
-with `pip`
-```
+git clone https://github.com/nlaanait/qcdenoise.git
+cd qcdenoise
 pip install .
 ```
-alternatively,
-```
-python setup.py install
-```
+### Major Dependencies
+1. `qiskit`
+2. `pytorch`
 
-## Examples
+### Examples
 See `examples`
 
 
-# Contributors
-* Numan Laanait
-* Kathleen Hamilton
-* Raphael Pooser
+### Authors
+* Numan Laanait- [@nlaanait](https://github.com/nlaanait)
+* Kathleen Hamilton- [@k8hamilton](https://github.com/k8hamilton)
