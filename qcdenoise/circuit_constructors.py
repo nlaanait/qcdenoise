@@ -65,6 +65,20 @@ def sigma_prod(op_str):
         coef_list.append(coef)
         pauli_list.append(mat3)
     return np.prod(np.asarray(coef_list)),[pauli_label[x] for x in pauli_list][0]
+
+def _build_stabilizer_meas(circ,stabilizer_str):
+    stab_ops = list(stabilizer_str)
+    for idx in range(len(stab_ops[1:])):
+        op_str = stab_ops[len(stab_ops)-1-idx]
+        if op_str=='X':
+            # measure X basis
+            circ.h(idx)
+        elif op_str=='Y':
+            # measure Y basis
+            circ.sdg(idx)
+            circ.h(idx)
+    return circ
+
 class CircuitConstructor:
     """Parent class of constructing circuits
 
@@ -322,6 +336,63 @@ class GraphCircuit(CircuitConstructor):
                     ops_labels.append(label)
                     circ.unitary(unitary_op, [node, ngbr], label=label)
             if self.stochastic: self.ops_labels=ops_labels
+            if self.state_sim:
+                self.circuit = circ
+                return
+            circ.barrier()
+            circ.measure(q_reg,c_reg)
+            self.circuit = circ
+    def _build_cphase_stabilizer(self, graph,stablizer_str):
+        q_reg = qk.QuantumRegister(self.n_qubits)
+        c_reg = qk.ClassicalRegister(self.n_qubits)
+        circ = qk.QuantumCircuit(q_reg, c_reg)
+        if type(graph)==nx.DiGraph:
+            print('something is not right with directed graphs, don't use)
+            raise NotImplementedError
+            return
+        elif type(graph)==nx.Graph:
+            for node, ngbrs in graph.edges():
+                circ.h(node)
+                circ.cx(node, ngbrs)
+                if bool(np.random.choice(2)) and self.stochastic:
+                    label = 'unitary_{}_{}'.format(node, ngbr)
+                    ops_labels.append(label)
+                    circ.unitary(unitary_op, [node, ngbr], label=label)
+                circ.h(node)
+            if self.stochastic: self.ops_labels = ops_labels
+            # add operators for stabilizer measurements
+            stab_ops = list(stabilizer_str)
+            circ.barrier()
+            circ=build_stabilizer_meas(circ,stabilizer_str)
+            if self.state_sim:
+                self.circuit = circ
+                return
+            circ.barrier()
+            circ.measure(q_reg, c_reg)
+            self.circuit = circ
+
+    def _build_controlZ_stabilizer(self, graph,stabilizer_str):
+        q_reg = qk.QuantumRegister(self.n_qubits)
+        c_reg = qk.ClassicalRegister(self.n_qubits)
+        circ = qk.QuantumCircuit(q_reg, c_reg)
+        for idx in range(self.n_qubits):
+            circ.h(idx)
+        if type(graph)==nx.DiGraph:
+            print('something is not right with directed graphs, don't use)
+            raise NotImplementedError
+            return
+        elif type(graph)==nx.Graph:
+            for node,ngbr in graph.edges():
+                circ.cz(node,ngbr)
+                if bool(np.random.choice(2)) and self.stochastic:
+                    label = 'unitary_{}_{}'.format(node, ngbr)
+                    ops_labels.append(label)
+                    circ.unitary(unitary_op, [node, ngbr], label=label)
+            if self.stochastic: self.ops_labels=ops_labels
+            # add operators for stabilizer measurements
+            stab_ops = list(stabilizer_str)
+            circ.barrier()
+            circ=build_stabilizer_meas(circ,stabilizer_str)
             if self.state_sim:
                 self.circuit = circ
                 return
