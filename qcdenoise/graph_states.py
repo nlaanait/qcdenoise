@@ -7,7 +7,7 @@ import numpy as np
 
 warnings.simplefilter("ignore")
 
-try: 
+try:
     import matplotlib.pyplot as plt
     _plots = True
 except ImportError:
@@ -68,7 +68,7 @@ class GraphData:
             self.data['30'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
             self.data['31'] = [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 3, 1.0), (5, 7 , 1.0)]
             self.data['32'] = [(1, 7, 1.0), (2, 7, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['33'] = [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)]          
+            self.data['33'] = [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)]
             self.data['34'] = [(1, 4, 1.0), (2, 3, 1.0), (3, 4, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
             self.data['35'] = [(1, 6, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)]
             self.data['36'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (3, 5, 1.0), (4, 5, 1.0), (4, 7, 1.0), (5, 6, 1.0)]
@@ -80,7 +80,7 @@ class GraphData:
             self.data['42'] = [(1, 3, 1.0), (1, 7, 1.0), (2, 3, 1.0), (2, 6, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
             self.data['43'] = [(1, 2, 1.0), (1, 4, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 3, 1.0), (7, 1, 1.0)]
             self.data['44'] = [(1, 4, 1.0), (1, 7, 1.0), (2, 3, 1.0), (2, 7, 1.0), (3, 4, 1.0), (3, 5, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['45'] = [(1, 2, 1.0), (2, 3, 1.0), (2, 5, 1.0), (2, 7, 1.0), (3, 4, 1.0), (3, 7, 1.0), (4, 5, 1.0), (5, 6, 1.0), (4, 6, 1.0), (6, 7, 1.0)]                    
+            self.data['45'] = [(1, 2, 1.0), (2, 3, 1.0), (2, 5, 1.0), (2, 7, 1.0), (3, 4, 1.0), (3, 7, 1.0), (4, 5, 1.0), (5, 6, 1.0), (4, 6, 1.0), (6, 7, 1.0)]
         else:
             self.data = dict([(d, None) for d in range(len(data))])
             for (idx, datum) in enumerate(data):
@@ -88,11 +88,11 @@ class GraphData:
 
     def partition(self, ratio=0.2, nonzero=True):
         """Two-way split of database
-        
+
         Keyword Arguments:
             ratio {float} -- ratio between test and train (default: {0.8})
             nonzero {bool} -- ensures that each partition has at least 1 element per # of edges category (default: {True})
-        
+
         Returns:
             (GraphData, GraphData) -- The GraphData for the train and test datasets
         """
@@ -124,8 +124,8 @@ class GraphData:
                 test_g_data.append(itm)
                 train_g_data.append(itm)
         print("Test Data- Number of graph examples per # of edges in graph: ", [len(itm) for itm in test_g_data])
-        print("Train Data- Number of graph examples per # of edges in graph: ",[len(itm) for itm in train_g_data]) 
-        
+        print("Train Data- Number of graph examples per # of edges in graph: ",[len(itm) for itm in train_g_data])
+
         # collapse categories into a single list
         test_data = []
         for items in test_g_data:
@@ -147,17 +147,21 @@ class GraphData:
         return GraphData(data=train_data), GraphData(data=test_data)
 
 class GraphDB:
-    def __init__(self, graph_data=None):
+    def __init__(self, graph_data=None,directed=False):
+        self.directed=directed
         self.graph_data = graph_data if graph_data is not None else GraphData().data
         self.graph = self._build_graphDB()
 
     def _build_graphDB(self):
-        graph_db= dict([('%d' %d, {'G':None, 'V':None, 'LUclass':None, '2Color':None}) 
+        graph_db= dict([('%d' %d, {'G':None, 'V':None, 'LUclass':None, '2Color':None})
                             for d in range(1,len(self.graph_data.keys()) + 1)])
         for (_, g_entry), (_, g_data) in zip(graph_db.items(), self.graph_data.items()):
             if g_data:
                 g_data = offset(g_data)
-                G = nx.DiGraph()
+                if self.directed:
+                    G = nx.DiGraph()
+                else:
+                    G = nx.Graph()
                 G.add_weighted_edges_from(g_data)
                 g_entry['G'] = G
                 g_entry['V'] = len(G.nodes)
@@ -179,10 +183,10 @@ class GraphDB:
         """Tests graph building. This is useful when testing a new GraphData object
            1. Building the graph
            2. Printing nodes, neighbors and weight values
-           3. Plotting the built graph.     
+           3. Plotting the built graph.
 
            if `graph_number` is None then all graphs in graph_data are built and tested
-        
+
         Keyword Arguments:
             graph_number {int} -- [description] (default: {1})
         """
@@ -194,7 +198,10 @@ class GraphDB:
             if graph_number is not None:
                 cond = g_num == str(graph_number)
             if g_data and cond:
-                G = nx.DiGraph()
+                if self.directed:
+                    G = nx.DiGraph()
+                else:
+                    G = nx.Graph()
                 G.add_weighted_edges_from(g_data)
                 # print nodes and neighbors
                 for node, ngbrs in G.adjacency():
@@ -208,9 +215,9 @@ class GraphDB:
 
     def __getitem__(self, key):
         return self.graph[key]
-    
+
     def __getattr__(self, keys):
         return self.graph.keys
-    
+
     def __getattr__(self, items):
         return self.graph.items

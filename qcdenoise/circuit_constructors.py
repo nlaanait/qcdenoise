@@ -119,12 +119,12 @@ class GraphCircuit(CircuitConstructor):
         CircuitConstructor {Parent class} -- abstract class
     """
     def __init__(self, graph_data=None, gate_type="Controlled_Phase", stochastic=True, smallest_subgraph=2,
-                       largest_subgraph=None, **kwargs):
+                       largest_subgraph=None,directed=False, **kwargs):
         super(GraphCircuit, self).__init__(**kwargs)
         if graph_data is None:
-            self.graph_db = GraphDB()
+            self.graph_db = GraphDB(directed=directed)
         else:
-            self.graph_db = GraphDB(graph_data=graph_data)
+            self.graph_db = GraphDB(graph_data=graph_data,directed=directed)
         self.gate_type = gate_type
         self.all_graphs = self.get_sorted_db()
         self.largest_subgraph = self.check_largest(largest_subgraph)
@@ -134,6 +134,7 @@ class GraphCircuit(CircuitConstructor):
         self.stochastic = stochastic
         self.name = "GraphState"
         self.circuit_graph = None
+        self.directed=directed
 
     def check_largest(self, val):
         for key, itm in self.all_graphs.items():
@@ -157,8 +158,10 @@ class GraphCircuit(CircuitConstructor):
         return combs
 
     def combine_subgraphs(self, sub_graphs):
-        #union_graph = nx.DiGraph()
-        union_graph = nx.Graph()
+        if self.directed:
+            union_graph = nx.DiGraph()
+        else:
+            union_graph = nx.Graph()
         for sub_g in sub_graphs:
             union_nodes = len(union_graph.nodes)
             if union_nodes > 1:
@@ -183,21 +186,27 @@ class GraphCircuit(CircuitConstructor):
             sub_graphs.append(sub_g[idx])
         return sub_graphs
 
-    def build_circuit(self, graph_plot=False):
-        # 1. Pick a random combination of subgraphs
-        sub_graphs = self.pick_subgraphs()
-        # 2. Combine subgraphs into a single circuit graph
-        circuit_graph = self.combine_subgraphs(sub_graphs)
+    def build_circuit(self, circuit_graph=None,graph_plot=False):
+        if circuit_graph==None:
+            # 1. Pick a random combination of subgraphs
+            sub_graphs = self.pick_subgraphs()
+            # 2. Combine subgraphs into a single circuit graph
+            circuit_graph = self.combine_subgraphs(sub_graphs)
         self.circuit_graph = circuit_graph
         if graph_plot and _plots:
             nx.draw_circular(circuit_graph, **nx_plot_options)
         # 3. Build a circuit from the graph state
         if self.gate_type == "Controlled_Phase":
             self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
+            self.print_verbose("If circuit graph is undirected, then one arc chosen arbitrarily")
             self._build_controlled_phase_gate(circuit_graph)
         elif self.gate_type == "SControlled_Phase": # same as controlled phase gate but w/ Stochastic unitary gates after CNOT
             self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
             self._build_Scontrolled_phase_gate(circuit_graph)
+        elif self.gate_type == "Controlled_Z": # same as controlled phase gate but w/ Stochastic unitary gates after CNOT
+            self.print_verbose("Assigning a Controlled Z gate to Node Edges")
+            self.print_verbose("If circuit graph is undirected, then one arc chosen arbitrarily")
+            self._build_controlled_Z_gate(circuit_graph)
 
     def get_generators(self):
         """ get generators of the graph state stabilizers
@@ -246,23 +255,80 @@ class GraphCircuit(CircuitConstructor):
         q_reg = qk.QuantumRegister(self.n_qubits)
         c_reg = qk.ClassicalRegister(self.n_qubits)
         circ = qk.QuantumCircuit(q_reg, c_reg)
-        gate_pairs = []
-        for node, ngbrs in graph.adjacency():
-            for ngbr, _ in ngbrs.items():
+        if type(graph)==nx.DiGraph:
+            gate_pairs = []
+            for node, ngbrs in graph.adjacency():
+                for ngbr, _ in ngbrs.items():
+                    circ.h(node)
+                    circ.cx(node, ngbr)
+                    if bool(np.random.choice(2)) and self.stochastic:
+                        label = 'unitary_{}_{}'.format(node, ngbr)
+                        ops_labels.append(label)
+                        circ.unitary(unitary_op, [node, ngbr], label=label)
+                    circ.h(node)
+            if self.stochastic: self.ops_labels = ops_labels
+            if self.state_sim:
+                self.circuit = circ
+                return
+            circ.barrier()
+            circ.measure(q_reg, c_reg)
+            self.circuit = circ
+            return
+        elif type(graph)==nx.Graph:
+            gate_pairs = []
+            for node, ngbrs in graph.edges():
                 circ.h(node)
-                circ.cx(node, ngbr)
+                circ.cx(node, ngbrs)
                 if bool(np.random.choice(2)) and self.stochastic:
                     label = 'unitary_{}_{}'.format(node, ngbr)
                     ops_labels.append(label)
                     circ.unitary(unitary_op, [node, ngbr], label=label)
                 circ.h(node)
-        if self.stochastic: self.ops_labels = ops_labels
-        if self.state_sim:
+            if self.stochastic: self.ops_labels = ops_labels
+            if self.state_sim:
+                self.circuit = circ
+                return
+            circ.barrier()
+            circ.measure(q_reg, c_reg)
+            self.circuit = circ
+
+    def _build_controlled_Z_gate(self, graph):
+        q_reg = qk.QuantumRegister(self.n_qubits)
+        c_reg = qk.ClassicalRegister(self.n_qubits)
+        circ = qk.QuantumCircuit(q_reg, c_reg)
+        for idx in range(self.n_qubits):
+            circ.h(idx)
+        if type(graph)==nx.DiGraph:
+            gate_pairs = []
+            for node, ngbrs in graph.adjacency():
+                for ngbr, _ in ngbrs.items():
+                    circ.cz(node, ngbr)
+                    if bool(np.random.choice(2)) and self.stochastic:
+                        label = 'unitary_{}_{}'.format(node, ngbr)
+                        ops_labels.append(label)
+                        circ.unitary(unitary_op, [node, ngbr], label=label)
+            if self.stochastic: self.ops_labels = ops_labels
+            if self.state_sim:
+                self.circuit = circ
+                return
+            circ.barrier()
+            circ.measure(q_reg, c_reg)
             self.circuit = circ
             return
-        circ.barrier()
-        circ.measure(q_reg, c_reg)
-        self.circuit = circ
+        elif type(graph)==nx.Graph:
+            for node,ngbr in graph.edges():
+                circ.cz(node,ngbr)
+                if bool(np.random.choice(2)) and self.stochastic:
+                    label = 'unitary_{}_{}'.format(node, ngbr)
+                    ops_labels.append(label)
+                    circ.unitary(unitary_op, [node, ngbr], label=label)
+            if self.stochastic: self.ops_labels=ops_labels
+            if self.state_sim:
+                self.circuit = circ
+                return
+            circ.barrier()
+            circ.measure(q_reg,c_reg)
+            self.circuit = circ
 
     def get_sorted_db(self):
         sorted_dict = dict([(i, []) for i in range(1, len(self.graph_db.keys()) \
