@@ -120,6 +120,18 @@ class CircuitConstructor:
                                 shots=self.n_shots).result().get_statevector()
         return
 
+    def get_measurement(self):
+        """execute circuit with qasm sim."""
+        self.counts=qk.execute(self.circuit,\
+                                backend=qk.Aer.get_backend('qasm_simulator'),
+                                shots=self.n_shots).result().get_counts()
+        return
+    def get_stabilizer_measurements(self):
+        """execute circuit with qasm sim."""
+        self.stab_counts=qk.execute(self.stab_circuits,\
+                                backend=qk.Aer.get_backend('qasm_simulator'),
+                                shots=self.n_shots).result().get_counts()
+        return
     def estimate_entanglement(self):
         """estimate entanglement of final state using n-qubit entanglement
         winessess if circuit was prepared as GHZ state then assume maximally
