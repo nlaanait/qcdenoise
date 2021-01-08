@@ -11,6 +11,9 @@ from qiskit.quantum_info.operators import Operator
 
 from .graph_states import GraphDB, _plots, nx_plot_options
 
+from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
+from sympy import I
+
 global seed
 seed = 1234
 np.random.seed(seed)
@@ -33,8 +36,6 @@ def partitions(n, start=2):
              yield (i,) + p
 
 def sigma_prod(op_str):
-    from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
-    from sympy import I
     pauli_dict= {"I":"I","X":Pauli(1), "Y":Pauli(2),"Z":Pauli(3)}
     pauli_label = {Pauli(1):"X",Pauli(2):"Y",Pauli(3):"Z","I":"I"}
     op_list=list(op_str)
@@ -64,6 +65,21 @@ def sigma_prod(op_str):
         coef_list.append(coef)
         pauli_list.append(mat3)
     return np.prod(np.asarray(coef_list)),[pauli_label[x] for x in pauli_list][0]
+
+def build_stabilizer_meas(circ,stabilizer_str):
+    ''' build a circuit block that implements the measurements in a stabilizer'''
+    stab_ops = list(stabilizer_str[1:])[::-1]
+    for idx in range(len(stab_ops)):
+        op_str = stab_ops[idx]
+        if op_str=='X':
+            # measure X basis
+            circ.h(idx)
+        elif op_str=='Y':
+            # measure Y basis
+            circ.sdg(idx)
+            circ.h(idx)
+    return circ
+
 class CircuitConstructor:
     """Parent class of constructing circuits
 
@@ -198,14 +214,12 @@ class GraphCircuit(CircuitConstructor):
         # 3. Build a circuit from the graph state
         if self.gate_type == "Controlled_Phase":
             self.print_verbose("Assigning a Controlled Phase Gate (H-CNOT-H) to Node Edges")
-            self.print_verbose("If circuit graph is undirected, then one arc chosen arbitrarily")
             self._build_controlled_phase_gate(circuit_graph)
         elif self.gate_type == "SControlled_Phase": # same as controlled phase gate but w/ Stochastic unitary gates after CNOT
             self.print_verbose("Assigning a Stochastic Controlled Phase Gate (H-CNOT-P(U)-H) to Node Edges")
             self._build_Scontrolled_phase_gate(circuit_graph)
         elif self.gate_type == "Controlled_Z": # same as controlled phase gate but w/ Stochastic unitary gates after CNOT
             self.print_verbose("Assigning a Controlled Z gate to Node Edges")
-            self.print_verbose("If circuit graph is undirected, then one arc chosen arbitrarily")
             self._build_controlled_Z_gate(circuit_graph)
 
     def get_generators(self):
@@ -329,6 +343,80 @@ class GraphCircuit(CircuitConstructor):
             circ.barrier()
             circ.measure(q_reg,c_reg)
             self.circuit = circ
+
+    def _build_cphase_stabilizer(self, graph,stablizer_str):
+        """
+        build all circuits for all stabilizers, store in a list
+        """
+        self.stab_circuits = []
+        if self.stabilizers==None:
+            if self.generators==None:
+                self.get_generators
+            self.get_stabilizers
+        for sdx in self.stabilizers:
+            q_reg = qk.QuantumRegister(self.n_qubits)
+            c_reg = qk.ClassicalRegister(self.n_qubits)
+            circ = qk.QuantumCircuit(q_reg, c_reg,name=sdx)
+            if type(self.circuit_graph)==nx.DiGraph:
+                print('something is not right with directed graphs')
+                raise NotImplementedError
+                return
+            elif type(self.circuit_graph)==nx.Graph:
+                for node, ngbrs in self.circuit_graph.edges():
+                    circ.h(node)
+                    circ.cx(node, ngbrs)
+                    if bool(np.random.choice(2)) and self.stochastic:
+                        label = 'unitary_{}_{}'.format(node, ngbr)
+                        ops_labels.append(label)
+                        circ.unitary(unitary_op, [node, ngbr], label=label)
+                    circ.h(node)
+                if self.stochastic: self.ops_labels = ops_labels
+                # add operators for stabilizer measurements
+                stab_ops = list(stabilizer_str)
+                circ.barrier()
+                circ=build_stabilizer_meas(circ,sdx)
+                if self.state_sim:
+                    self.stab_circuits.append(circ)
+                circ.barrier()
+                circ.measure(q_reg, c_reg)
+                self.stab_circuits.append(circ)
+
+    def _build_controlZ_stabilizer(self, graph,stabilizer_str):
+        """
+        build all circuits for all stabilizers, store in a list
+        """
+        self.stab_circuits = []
+        if self.stabilizers==None:
+            if self.generators==None:
+                self.get_generators
+            self.get_stabilizers
+        for sdx in self.stabilizers:
+            q_reg = qk.QuantumRegister(self.n_qubits)
+            c_reg = qk.ClassicalRegister(self.n_qubits)
+            circ = qk.QuantumCircuit(q_reg, c_reg,name=sdx)
+            for idx in range(self.n_qubits):
+                circ.h(idx)
+            if type(graph)==nx.DiGraph:
+                print('something is not right with directed graphs')
+                raise NotImplementedError
+                return
+            elif type(graph)==nx.Graph:
+                for node,ngbr in graph.edges():
+                    circ.cz(node,ngbr)
+                    if bool(np.random.choice(2)) and self.stochastic:
+                        label = 'unitary_{}_{}'.format(node, ngbr)
+                        ops_labels.append(label)
+                        circ.unitary(unitary_op, [node, ngbr], label=label)
+                if self.stochastic: self.ops_labels=ops_labels
+                # add operators for stabilizer measurements
+                stab_ops = list(stabilizer_str)
+                circ.barrier()
+                circ=build_stabilizer_meas(circ,sdx)
+                if self.state_sim:
+                    self.stab_circuits.append(circ)
+                circ.barrier()
+                circ.measure(q_reg,c_reg)
+                self.stab_circuits.append(circ)
 
     def get_sorted_db(self):
         sorted_dict = dict([(i, []) for i in range(1, len(self.graph_db.keys()) \
