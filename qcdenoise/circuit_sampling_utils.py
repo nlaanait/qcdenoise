@@ -70,7 +70,8 @@ def sample_circuit_prob_adjT_ew(args):
         adj_tensor = sampler.get_adjacency_tensor(
             max_tensor_dims=sampling_dict["adjT_dim"])
         all_adj_T[i] = adj_tensor
-        sampler.circ_builder.get_stabilizer_measurements()
+        sampler.circ_builder.get_stabilizer_measurements(
+            sampler.noise_model)
         print(sampler.circ_builder.stabilizer_measurements)
     return {'prob_vec': all_prob_vec, 'adj_T': all_adj_T}
 

@@ -1,3 +1,4 @@
+from copy import deepcopy
 from qiskit.quantum_info.operators import Operator
 from uncertainties import unumpy
 from uncertainties.umath import *
@@ -76,6 +77,7 @@ class CircuitConstructor:
         self.track_gates = track_gates
         self.gate_count = {}
         self.opt_level = 0
+        self.cached_circuit = None
 
         if self.backend is None and state_simulation == False:
             self.backend_name = 'sim'
@@ -203,23 +205,34 @@ class CircuitConstructor:
                                      noise_model=self.noise_model).result().get_counts()
         return
 
-    def get_stabilizer_measurements(self):
+    def get_stabilizer_measurements(self, noise_model=None):
         """measure ALL stabilizers: execute circuits with qasm sim."""
         if self.stab_circuits is None:
             self.build_stabilizer_circuits()
+        self.stab_circuits = [self.cached_circuit.append(circ.to_gate(label="stab"))
+                              for circ in self.stab_circuits]
+        for circ in self.stab_circuits:
+            circ.measure_all()
         if self.diags is None:
             self.construct_diagonals()
-        if self.backend_name is not 'Frankie':
-            qk_outcome = self.stab_counts = qk.execute(self.stab_circuits,
-                                                       backend=self.device, initial_layout=self.hardware_qubits,
-                                                       shots=self.n_shots, optimization_level=self.opt_level)
-        elif self.backend_name is 'Frankie':
-            qk_outcome = self.stab_counts = qk.execute(self.stab_circuits,
-                                                       backend=self.device,
-                                                       basis_gates=self.basis_gates,
-                                                       noise_model=self.noise_model)
+        stab_counts = qk.execute(self.stab_circuits,
+                                 noise_model=noise_model,
+                                 shots=self.n_shots,
+                                 optimization_level=self.opt_level)
+        # if self.backend_name is not 'Frankie':
+        #     qk_outcome = self.stab_counts = qk.execute(self.stab_circuits,
+        #                                                backend=self.device,
+        #                                                noise_model=noise_model,
+        #                                                initial_layout=self.hardware_qubits,
+        #                                                shots=self.n_shots,
+        #                                                optimization_level=self.opt_level)
+        # elif self.backend_name is 'Frankie':
+        #     qk_outcome = self.stab_counts = qk.execute(self.stab_circuits,
+        #                                                backend=self.device,
+        #                                                basis_gates=self.basis_gates,
+        #                                                noise_model=self.noise_model)
         if self.track_gates == False:
-            self.stab_counts = qk_outcome.result().get_counts()
+            self.stab_counts = stab_counts.result().get_counts()
         if self.track_gates == True:
             if self.hardware_qubits is not None:
                 hw_tup = tuple(self.hardware_qubits)
@@ -227,9 +240,9 @@ class CircuitConstructor:
                 # qk_outcome = qk.execute(self.stab_circuits,\
                 #        backend=self.device,initial_layout=self.hardware_qubits,\
                 #        shots=self.n_shots,optimization_level=self.opt_level)
-                self.stab_counts = qk_outcome.result().get_counts()
+                self.stab_counts = stab_counts.result().get_counts()
                 # count number of cx gates in transpiled circuits
-                qo_dict = qk_outcome.qobj().to_dict()
+                qo_dict = stab_counts.qobj().to_dict()
                 count_list = {}
                 for ic in range(len(self.stab_circuits)):
                     ndx = self.stab_circuits[ic].name
@@ -248,9 +261,9 @@ class CircuitConstructor:
                 # qk_outcome = qk.execute(self.stab_circuits,\
                 #        backend=self.device,initial_layout=self.hardware_qubits,\
                 #        shots=self.n_shots,optimization_level=self.opt_level)
-                self.stab_counts = qk_outcome.result().get_counts()
+                self.stab_counts = stab_counts.result().get_counts()
                 # count number of cx gates in transpiled circuits
-                qo_dict = qk_outcome.qobj().to_dict()
+                qo_dict = stab_counts.qobj().to_dict()
                 count_list = {}
                 for ic in range(len(self.stab_circuits)):
                     ndx = self.stab_circuits[ic].name
@@ -767,8 +780,7 @@ class GraphCircuit(CircuitConstructor):
         unitary_op = Operator(np.identity(4))
         ops_labels = []
         q_reg = qk.QuantumRegister(self.n_qubits)
-        c_reg = qk.ClassicalRegister(self.n_qubits)
-        circ = qk.QuantumCircuit(q_reg, c_reg)
+        circ = qk.QuantumCircuit(q_reg)
         for idx in range(self.n_qubits):
             circ.h(idx)
         if type(self.circuit_graph) == nx.DiGraph:
@@ -789,8 +801,7 @@ class GraphCircuit(CircuitConstructor):
             if self.state_sim:
                 self.circuit = circ
                 return
-            circ.barrier()
-            circ.measure(q_reg, c_reg)
+            circ.measure_all()
             self.circuit = circ
             return
         elif type(self.circuit_graph) == nx.Graph:
@@ -810,8 +821,8 @@ class GraphCircuit(CircuitConstructor):
             if self.state_sim:
                 self.circuit = circ
                 return
-            circ.barrier()
-            circ.measure(q_reg, c_reg)
+            self.cached_circuit = deepcopy(circ)
+            circ.measure_all()
             self.circuit = circ
 
     def _build_CPHASE_gate(self):
@@ -941,8 +952,7 @@ class GraphCircuit(CircuitConstructor):
             self.get_stabilizers()
         for sdx in self.stabilizers:
             q_reg = qk.QuantumRegister(self.n_qubits)
-            c_reg = qk.ClassicalRegister(self.n_qubits)
-            circ = qk.QuantumCircuit(q_reg, c_reg, name=sdx)
+            circ = qk.QuantumCircuit(q_reg, name=sdx)
             for idx in range(self.n_qubits):
                 circ.h(idx)
             if type(self.circuit_graph) == nx.DiGraph:
@@ -965,12 +975,10 @@ class GraphCircuit(CircuitConstructor):
                     self.ops_labels = ops_labels
                 # add operators for stabilizer measurements
                 stab_ops = list(sdx)
-                circ.barrier()
                 circ = build_stabilizer_meas(circ, sdx)
                 if self.state_sim:
                     self.stab_circuits.append(circ)
-                circ.barrier()
-                circ.measure(q_reg, c_reg)
+                # circ.measure_all(q_reg, c_reg)
                 self.stab_circuits.append(circ)
 
     def _build_unique_controlZ_stabilizer(self):
