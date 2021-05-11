@@ -1,161 +1,303 @@
-import warnings
-import random
+__all__ = [
+    "GraphData",
+    "HeinGraphData",
+    "partition_GraphData",
+    "GraphDB"]
+import logging
 import math
+import random
+from dataclasses import dataclass
+from typing import Any, Dict, List, Tuple
 
 import networkx as nx
-import numpy as np
 
-warnings.simplefilter("ignore")
+# initiate logger
+logger = logging.getLogger(__name__)
+formatter = logging.Formatter(
+    "dataset- %(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%m/%d/%Y %H:%M:%S",
+)
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
+# plotting options
 try:
     import matplotlib.pyplot as plt
     _plots = True
+    nx_plot_options = {
+        'with_labels': True,
+        'node_color': 'red',
+        'node_size': 175,
+        'width': 2,
+        'font_weight': 'bold',
+        'font_color': 'white',
+    }
 except ImportError:
-    warnings.warn("matplotlib could not be imported- skipping plotting.")
+    logger.warning(
+        "matplotlib could not be imported- skipping plotting.")
     _plots = False
+    nx_plot_options = None
 
-def offset(l):
-    l = [(edge[0]-1, edge[1]-1, edge[-1]) for edge in l]
-    return l
 
-nx_plot_options = {
-            'with_labels': True,
-            'node_color': 'red',
-            'node_size': 175,
-            'width': 2,
-            'font_weight':'bold',
-            'font_color': 'white',
-            }
-global seed
-seed = 1234
-np.random.seed(seed)
+def offset(edge_list: list) -> list:
+    """offset edge ordering
 
-class GraphData:
-    """The keys correspond to the graph numbers in Table V in arXiv:060296 (Hein et al.)
+    Args:
+        edge_list (list): list of tuples defining edges
+
+    Returns:
+        new_l: offset list of tuples defining edges
     """
-    def __init__(self, data=None):
-        if data is None:
-            self.data = dict([('%d' %d, None) for d in range(1,46)])
-            self.data['1'] =  [(1, 2, 1.0)]
-            self.data['2'] =  [(1, 2, 1.0), (1, 3, 1.0)]
-            self.data['3'] =  [(1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0)]
-            self.data['4'] =  [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0)]
-            self.data['5'] =  [(1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0), (1, 5, 1.0)]
-            self.data['6'] =  [(1, 2, 1.0), (2, 3, 1.0), (2, 5, 1.0), (3, 4, 1.0)]
-            self.data['7'] =  [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0)]
-            self.data['8'] =  [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 1, 1.0)]
-            self.data['9'] =  [(1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0), (1, 4, 1.0), (1, 6, 1.0)]
-            self.data['10'] = [(1, 6, 1.0), (2, 6, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0)]
-            self.data['11'] = [(1, 6, 1.0), (2, 6, 1.0), (3, 5, 1.0), (4, 5, 1.0), (5, 6, 1.0)]
-            self.data['12'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (6, 2, 1.0)]
-            self.data['13'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (3, 6, 1.0)]
-            self.data['14'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0)]
-            self.data['15'] = [(1, 6, 1.0), (2, 4, 1.0), (3, 4, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0)]
-            self.data['16'] = [(1, 2, 1.0), (2, 3, 1.0), (2, 4, 1.0), (3, 4, 1.0), (2, 6, 1.0), (4, 5, 1.0)]
-            self.data['17'] = [(1, 2, 1.0), (1, 5, 1.0), (1, 6, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0)]
-            self.data['18'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 1, 1.0)]
-            self.data['19'] = [(1, 2, 1.0), (1, 3, 1.0), (2, 3, 1.0), (2, 5, 1.0), (3, 4, 1.0), (4, 5, 1.0), (4, 6, 1.0), (5, 6, 1.0), (6, 1, 1.0)]
-            self.data['20'] = [(1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0), (1, 5, 1.0), (1, 6, 1.0), (1, 7, 1.0)]
-            self.data['21'] = [(1, 7, 1.0), (7, 2, 1.0), (7, 3, 1.0), (7, 4, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['22'] = [(1, 7, 1.0), (7, 2, 1.0), (7, 3, 1.0), (7, 6, 1.0), (6, 4, 1.0), (6, 5, 1.0)]
-            self.data['23'] = [(1, 7, 1.0), (7, 2, 1.0), (7, 3, 1.0), (7, 6, 1.0), (6, 5, 1.0), (5, 4, 1.0)]
-            self.data['24'] = [(1, 7, 1.0), (7, 6, 1.0), (7, 2, 1.0), (6, 5, 1.0), (5, 3, 1.0), (5, 4, 1.0)]
-            self.data['25'] = [(1, 2, 1.0), (1, 7, 1.0), (7, 3, 1.0), (7, 4, 1.0), (7, 6, 1.0), (6, 5, 1.0)]
-            self.data['26'] = [(1, 7, 1.0), (7, 2, 1.0), (7, 6, 1.0), (6, 3, 1.0), (6, 5, 1.0), (5, 4, 1.0)]
-            self.data['27'] = [(1, 2, 1.0), (2, 7, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0)]
-            self.data['28'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (3, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['29'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (3, 6, 1.0), (6, 7, 1.0)]
-            self.data['30'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['31'] = [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 3, 1.0), (5, 7 , 1.0)]
-            self.data['32'] = [(1, 7, 1.0), (2, 7, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['33'] = [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)]
-            self.data['34'] = [(1, 4, 1.0), (2, 3, 1.0), (3, 4, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['35'] = [(1, 6, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)]
-            self.data['36'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (3, 5, 1.0), (4, 5, 1.0), (4, 7, 1.0), (5, 6, 1.0)]
-            self.data['37'] = [(1, 7, 1.0), (7, 6, 1.0), (6, 5, 1.0), (5, 4, 1.0), (4, 3, 1.0), (3, 2, 1.0), (3, 7, 1.0)]
-            self.data['38'] = [(1, 6, 1.0), (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['39'] = [(1, 5, 1.0), (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['40'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 1, 1.0)]
-            self.data['41'] = [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (5, 1, 1.0), (6, 1, 1.0), (6, 7, 1.0)]
-            self.data['42'] = [(1, 3, 1.0), (1, 7, 1.0), (2, 3, 1.0), (2, 6, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['43'] = [(1, 2, 1.0), (1, 4, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 3, 1.0), (7, 1, 1.0)]
-            self.data['44'] = [(1, 4, 1.0), (1, 7, 1.0), (2, 3, 1.0), (2, 7, 1.0), (3, 4, 1.0), (3, 5, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)]
-            self.data['45'] = [(1, 2, 1.0), (2, 3, 1.0), (2, 5, 1.0), (2, 7, 1.0), (3, 4, 1.0), (3, 7, 1.0), (4, 5, 1.0), (5, 6, 1.0), (4, 6, 1.0), (6, 7, 1.0)]
-        else:
-            self.data = dict([(d, None) for d in range(len(data))])
-            for (idx, datum) in enumerate(data):
-                self.data[idx] = datum
+    new_l = [(edge[0] - 1, edge[1] - 1, edge[-1])
+             for edge in edge_list]
+    return new_l
 
-    def partition(self, ratio=0.2, nonzero=True):
-        """Two-way split of database
 
-        Keyword Arguments:
-            ratio {float} -- ratio between test and train (default: {0.8})
-            nonzero {bool} -- ensures that each partition has at least 1 element per # of edges category (default: {True})
+@dataclass(init=True)
+class GraphData:
+    """Stores data to define a graph via edges and their weights
+    """
+    data: Dict[str, List[Tuple]]
 
-        Returns:
-            (GraphData, GraphData) -- The GraphData for the train and test datasets
+    def groupby_edges(self) -> None:
+        """Groups data based on the # of edges per entry
         """
-        # group data into categories defined by the # of edges
-        test_g_data = []
-        train_g_data = []
         grouped_g_data = {}
-        for key, itm in self.data.items():
+        for _, itm in self.data.items():
             n_nodes = len(itm)
-            if n_nodes in grouped_g_data.keys():
-                grouped_g_data[n_nodes].append(itm)
+            if str(n_nodes) in grouped_g_data.keys():
+                grouped_g_data[str(n_nodes)].append(itm)
             else:
-                grouped_g_data[n_nodes] = [itm]
+                grouped_g_data[str(n_nodes)] = [itm]
+        self.data = grouped_g_data
 
-        # shuffle each category and 2-way split
-        for idx, (key, itm) in enumerate(grouped_g_data.items()):
-            if len(itm)> 2:
-                random.shuffle(itm)
-                part = math.ceil(len(itm) * ratio)
-                test = itm[:part]
-                train = itm[part:]
-                if len(train) > 1 :
-                    test_g_data.append(test)
-                    train_g_data.append(train)
-                else:
-                    test_g_data.append(test)
-                    train_g_data.append(test)
+    def __getattr__(self, name: str) -> Any:
+        if name == "keys":
+            return self.data.keys
+        elif name == "items":
+            return self.data.items
+
+
+# Graph data from Hein et al. arXiv:060296.
+# The keys correspond to the graph numbers in Table V
+HeinGraphData = GraphData(data={'1': [(1, 2, 1.0)],
+                                '2': [(1, 2, 1.0), (1, 3, 1.0)],
+                                '3': [
+    (1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0)],
+    '4': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0)],
+    '5': [
+    (1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0), (1, 5, 1.0)],
+    '6': [
+    (1, 2, 1.0), (2, 3, 1.0), (2, 5, 1.0), (3, 4, 1.0)],
+    '7': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0)],
+    '8': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 1, 1.0)],
+    '9': [
+    (1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0), (1, 4, 1.0), (1, 6, 1.0)],
+    '10': [
+    (1, 6, 1.0), (2, 6, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0)],
+    '11': [
+    (1, 6, 1.0), (2, 6, 1.0), (3, 5, 1.0), (4, 5, 1.0), (5, 6, 1.0)],
+    '12': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (6, 2, 1.0)],
+    '13': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (3, 6, 1.0)],
+    '14': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0)],
+    '15': [
+    (1, 6, 1.0), (2, 4, 1.0), (3, 4,
+                               1.0), (3, 6, 1.0), (4, 5, 1.0),
+    (5, 6, 1.0)],
+    '16': [
+    (1, 2, 1.0), (2, 3, 1.0), (2, 4,
+                               1.0), (3, 4, 1.0), (2, 6, 1.0),
+    (4, 5, 1.0)],
+    '17': [
+    (1, 2, 1.0), (1, 5, 1.0), (1, 6,
+                               1.0), (2, 3, 1.0), (3, 4, 1.0),
+    (4, 5, 1.0)],
+    '18': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4,
+                               1.0), (4, 5, 1.0), (5, 6, 1.0),
+    (6, 1, 1.0)],
+    '19': [(1, 2, 1.0), (1, 3, 1.0), (2, 3, 1.0), (2, 5, 1.0), (
+        3, 4, 1.0), (4, 5, 1.0), (4, 6, 1.0), (5, 6, 1.0), (6, 1, 1.0)],
+    '20': [
+    (1, 2, 1.0), (1, 3, 1.0), (1, 4,
+                               1.0), (1, 5, 1.0), (1, 6, 1.0),
+    (1, 7, 1.0)],
+    '21': [
+    (1, 7, 1.0), (7, 2, 1.0), (7, 3,
+                               1.0), (7, 4, 1.0), (5, 6, 1.0),
+    (6, 7, 1.0)],
+    '22': [
+    (1, 7, 1.0), (7, 2, 1.0), (7, 3,
+                               1.0), (7, 6, 1.0), (6, 4, 1.0),
+    (6, 5, 1.0)],
+    '23': [
+    (1, 7, 1.0), (7, 2, 1.0), (7, 3,
+                               1.0), (7, 6, 1.0), (6, 5, 1.0),
+    (5, 4, 1.0)],
+    '24': [
+    (1, 7, 1.0), (7, 6, 1.0), (7, 2,
+                               1.0), (6, 5, 1.0), (5, 3, 1.0),
+    (5, 4, 1.0)],
+    '25': [
+    (1, 2, 1.0), (1, 7, 1.0), (7, 3,
+                               1.0), (7, 4, 1.0), (7, 6, 1.0),
+    (6, 5, 1.0)],
+    '26': [
+    (1, 7, 1.0), (7, 2, 1.0), (7, 6,
+                               1.0), (6, 3, 1.0), (6, 5, 1.0),
+    (5, 4, 1.0)],
+    '27': [
+    (1, 2, 1.0), (2, 7, 1.0), (2, 3,
+                               1.0), (3, 4, 1.0), (4, 5, 1.0),
+    (5, 6, 1.0)],
+    '28': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4,
+                               1.0), (3, 5, 1.0), (5, 6, 1.0),
+    (6, 7, 1.0)],
+    '29': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4,
+                               1.0), (4, 5, 1.0), (3, 6, 1.0),
+    (6, 7, 1.0)],
+    '30': [
+    (1, 2, 1.0), (2, 3, 1.0), (3, 4,
+                               1.0), (4, 5, 1.0), (5, 6, 1.0),
+    (6, 7, 1.0)],
+    '31': [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0), (
+        3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 3, 1.0), (5, 7, 1.0)],
+    '32': [
+    (1, 7, 1.0), (2, 7, 1.0), (3, 6,
+                               1.0), (4, 5, 1.0), (5, 6, 1.0),
+    (6, 7, 1.0)],
+    '33': [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0),
+           (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)],
+    '34': [(1, 4, 1.0), (2, 3, 1.0), (3, 4, 1.0),
+           (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
+    '35': [(1, 6, 1.0), (2, 3, 1.0), (3, 4, 1.0),
+           (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)],
+    '36': [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0),
+           (3, 5, 1.0), (4, 5, 1.0), (4, 7, 1.0), (5, 6, 1.0)],
+    '37': [(1, 7, 1.0), (7, 6, 1.0), (6, 5, 1.0),
+           (5, 4, 1.0), (4, 3, 1.0), (3, 2, 1.0), (3, 7, 1.0)],
+    '38': [(1, 6, 1.0), (1, 2, 1.0), (2, 3, 1.0),
+           (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
+    '39': [(1, 5, 1.0), (1, 2, 1.0), (2, 3, 1.0),
+           (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
+    '40': [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0),
+           (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 1, 1.0)],
+    '41': [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (
+        4, 5, 1.0), (5, 6, 1.0), (5, 1, 1.0), (6, 1, 1.0), (6, 7, 1.0)],
+    '42': [(1, 3, 1.0), (1, 7, 1.0), (2, 3, 1.0), (
+        2, 6, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
+    '43': [(1, 2, 1.0), (1, 4, 1.0), (2, 3, 1.0), (
+        3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 3, 1.0), (7, 1, 1.0)],
+    '44': [(1, 4, 1.0), (1, 7, 1.0), (2, 3, 1.0), (2, 7, 1.0), (
+        3, 4, 1.0), (3, 5, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
+    '45': [(1, 2, 1.0), (2, 3, 1.0), (2, 5, 1.0), (2, 7, 1.0), (
+        3, 4, 1.0), (3, 7, 1.0), (4, 5, 1.0), (5, 6, 1.0), (4, 6, 1.0),
+    (6, 7, 1.0)]})
+
+
+def partition_GraphData(
+        graph_data: GraphData,
+        ratio: float = 0.2,
+        not_empty: bool = True) -> Tuple[GraphData, GraphData]:
+    """Two-way split of GraphData. Split is balanced across # of edges per graph
+
+    Args:
+        graph_data (GraphData): input GraphData to be split
+        ratio (float) : ratio of test to train (default: {0.8})
+        not_empty (bool) : ensures that each partition has at least 1 element
+
+    Returns:
+        (GraphData, GraphData) -- GraphData for the train and test datasets
+    """
+    test_g_data = []
+    train_g_data = []
+    graph_data.groupby_edges()
+    # grouped_g_data = graph_data.groupby_edges()
+
+    # shuffle each category and 2-way split
+    for _, itm in graph_data.items():
+        if len(itm) > 2:
+            random.shuffle(itm)
+            part = math.ceil(len(itm) * ratio)
+            test = itm[: part]
+            train = itm[part:]
+            if len(train) > 1:
+                test_g_data.append(test)
+                train_g_data.append(train)
             else:
+                test_g_data.append(test)
+                train_g_data.append(test)
+        elif not_empty:
+            test_g_data.append(itm)
+            train_g_data.append(itm)
+        else:
+            part = random.choices(
+                ["test", "train"], weights=[0.5, 0.5])
+            if part == "test":
                 test_g_data.append(itm)
+            else:
                 train_g_data.append(itm)
-        print("Test Data- Number of graph examples per # of edges in graph: ", [len(itm) for itm in test_g_data])
-        print("Train Data- Number of graph examples per # of edges in graph: ",[len(itm) for itm in train_g_data])
+    logger.debug("Test Data -  # of graph examples per # of edges in graph:" +
+                 f"{[len(itm) for itm in test_g_data]}")
+    logger.debug("Train Data- # of graph examples per # of edges in graph:" +
+                 f"{[len(itm) for itm in train_g_data]}")
 
-        # collapse categories into a single list
-        test_data = []
-        for items in test_g_data:
-            if len(items) > 1 and isinstance(items[0], list):
-                for itm in items:
-                    test_data.append(itm)
-            else:
-                test_data.append(items[0])
+    # collapse categories into a single list
+    test_data = []
+    for items in test_g_data:
+        if len(items) > 1 and isinstance(items[0], list):
+            for itm in items:
+                test_data.append(itm)
+        else:
+            test_data.append(items[0])
 
-        train_data = []
-        for items in train_g_data:
-            if len(items) > 1 and isinstance(items[0], list):
-                for itm in items:
-                    train_data.append(itm)
-            else:
-                train_data.append(items[0])
-        print("Number of Graphs in Train Database: ", len(train_data))
-        print("Number of Graphs in Test Database: ", len(test_data))
-        return GraphData(data=train_data), GraphData(data=test_data)
+    train_data = []
+    for items in train_g_data:
+        if len(items) > 1 and isinstance(items[0], list):
+            for itm in items:
+                train_data.append(itm)
+        else:
+            train_data.append(items[0])
+    logger.info(
+        f"# of Graphs in Train Partition: {len(train_data)}. " +
+        f"# of Graphs in Test Partition: {len(test_data)}")
+    train_data = GraphData(
+        data={
+            key: item for key,
+            item in enumerate(train_data)})
+    test_data = GraphData(
+        data={
+            key: item for key,
+            item in enumerate(test_data)})
+    return train_data, test_data
+
 
 class GraphDB:
-    def __init__(self, graph_data=None,directed=False):
-        self.directed=directed
-        self.graph_data = graph_data if graph_data is not None else GraphData().data
+    def __init__(self, graph_data: GraphData = HeinGraphData,
+                 directed: bool = False):
+        self.directed = directed
+        self.graph_data = graph_data
         self.graph = self._build_graphDB()
 
     def _build_graphDB(self):
-        graph_db= dict([('%d' %d, {'G':None, 'V':None, 'LUclass':None, '2Color':None})
-                            for d in range(1,len(self.graph_data.keys()) + 1)])
-        for (_, g_entry), (_, g_data) in zip(graph_db.items(), self.graph_data.items()):
+        """builds a dict out of networkx graphs
+
+        Returns:
+            graph_db (dict): built dictionary
+        """
+        graph_db = dict([('%d' % d, {'G': None, 'V': None, 'LUclass': None, '2Color': None})
+                         for d in range(1, len(self.graph_data.keys()) + 1)])
+        for (_, g_entry), (_, g_data) in zip(
+                graph_db.items(), self.graph_data.items()):
             if g_data:
                 g_data = offset(g_data)
                 if self.directed:
@@ -167,10 +309,17 @@ class GraphDB:
                 g_entry['V'] = len(G.nodes)
         return graph_db
 
-    def plot_graph(self, graph_number=[1]):
-        graph_number = graph_number if graph_number is not None else list(self.graph.keys())
+    def plot_graph(self, graph_number: List[int] = [1]) -> None:
+        """plot the graph
+
+        Args:
+            graph_number (list, optional): list of keys whose graphs will be
+            plotted. Defaults to [1].
+        """
+        graph_number = list(
+            self.graph.keys()) if graph_number is None else graph_number
         if _plots:
-            plt.figure(figsize=(2,2))
+            plt.figure(figsize=(2, 2))
             for g_num in graph_number:
                 plt.clf()
                 G = self.graph[str(g_num)]['G']
@@ -178,8 +327,11 @@ class GraphDB:
                     nx.draw_circular(G, **nx_plot_options)
                     plt.title('No. %s' % g_num, loc='right')
                     plt.show()
+        else:
+            logger.warning(
+                "matplotlib could not be imported- skipping plots.")
 
-    def test_graph_build(self, graph_number=1):
+    def test_graph_build(self, graph_number: int = 1) -> None:
         """Tests graph building. This is useful when testing a new GraphData object
            1. Building the graph
            2. Printing nodes, neighbors and weight values
@@ -191,33 +343,36 @@ class GraphDB:
             graph_number {int} -- [description] (default: {1})
         """
         if _plots:
-            plt.figure(figsize=(2,2))
-        for g_num, g_data in self.graph_data.items():
-            plt.clf()
-            cond = True
-            if graph_number is not None:
-                cond = g_num == str(graph_number)
-            if g_data and cond:
-                if self.directed:
-                    G = nx.DiGraph()
-                else:
-                    G = nx.Graph()
-                G.add_weighted_edges_from(g_data)
-                # print nodes and neighbors
-                for node, ngbrs in G.adjacency():
-                    for ngbr, edge_attr in ngbrs.items():
-                        print("Node:{}, Neighbor:{}, Weight:{}".format(node, ngbr, edge_attr["weight"]))
-                # plot
-                if _plots:
+            plt.figure(figsize=(2, 2))
+            for g_num, g_data in self.graph_data.items():
+                plt.clf()
+                cond = True
+                if graph_number is not None:
+                    cond = g_num == str(graph_number)
+                if g_data and cond:
+                    if self.directed:
+                        G = nx.DiGraph()
+                    else:
+                        G = nx.Graph()
+                    G.add_weighted_edges_from(g_data)
+                    # log nodes and neighbors
+                    for node, ngbrs in G.adjacency():
+                        for ngbr, edge_attr in ngbrs.items():
+                            logger.info(f"Node:{node}, Neighbor:{ngbr}," +
+                                        f"Weight:{edge_attr['weight']}")
+                    # plot
                     nx.draw_circular(G, **nx_plot_options)
                     plt.title('No. %s' % g_num, loc='right')
                     plt.show()
+        else:
+            logger.warning(
+                "matplotlib could not be imported- skipping plots.")
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: str) -> dict:
         return self.graph[key]
 
-    def __getattr__(self, keys):
-        return self.graph.keys
-
-    def __getattr__(self, items):
-        return self.graph.items
+    def __getattr__(self, name: str) -> Any:
+        if name == "keys":
+            return self.graph.keys
+        elif name == "items":
+            return self.graph.items

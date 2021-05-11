@@ -194,11 +194,11 @@ class CircuitConstructor:
 
     def get_measurement(self):
         """execute circuit with qasm sim."""
-        if self.backend_name is not 'Frankie':
+        if self.backend_name != 'Frankie':
             self.counts = qk.execute(self.circuit,
                                      backend=self.device, initial_layout=self.hardware_qubits,
                                      shots=self.n_shots, optimization_level=self.opt_level).result().get_counts()
-        elif self.backend_name is 'Frankie':
+        elif self.backend_name == 'Frankie':
             self.counts = qk.execute(self.circuit,
                                      backend=self.device,
                                      basis_gates=self.basis_gates,
