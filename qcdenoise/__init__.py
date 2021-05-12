@@ -4,6 +4,8 @@ from .circuit_sampling_utils import *
 from .io_utils import *
 from .ml_models import *
 from .graph_data import *
+from .graph_state import *
+from .config import *
 
 import logging
 

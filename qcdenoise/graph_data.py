@@ -11,32 +11,20 @@ from typing import Any, Dict, List, Tuple
 
 import networkx as nx
 
-import qcdenoise
+from .config import _plots, nx_plot_options
+
+if _plots:
+    import matplotlib.pyplot as plt
 
 # module logger
 logger = logging.getLogger(__name__)
 formatter = logging.Formatter(
-    "dataset- %(asctime)s - %(levelname)s - %(message)s",
+    f"{__name__}- %(asctime)s - %(levelname)s - %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
 )
 ch = logging.StreamHandler()
 ch.setFormatter(formatter)
 logger.addHandler(ch)
-
-# module plotting options
-_plots = qcdenoise.__plots__
-if _plots:
-    import matplotlib.pyplot as plt
-    nx_plot_options = {
-        'with_labels': True,
-        'node_color': 'red',
-        'node_size': 175,
-        'width': 2,
-        'font_weight': 'bold',
-        'font_color': 'white',
-    }
-else:
-    nx_plot_options = None
 
 
 def offset(edge_list: list) -> list:
@@ -285,6 +273,8 @@ class GraphDB:
                  directed: bool = False):
         self.directed = directed
         self.graph_data = graph_data
+        if graph_data == HeinGraphData:
+            logger.info("Building database with Graphs from Hein et al. ")
         self.db = self._build_graphDB()
 
     def _build_graphDB(self):
@@ -295,7 +285,7 @@ class GraphDB:
         """
         graph_db = dict([('%d' % d, {'G': None, 'V': None, 'LUclass': None, '2Color': None})
                          for d in range(1, len(self.graph_data.keys()) + 1)])
-        for (_, g_entry), (_, g_data) in zip(
+        for (_, g_entry), (key, g_data) in zip(
                 graph_db.items(), self.graph_data.items()):
             if g_data:
                 g_data = offset(g_data)
@@ -306,6 +296,8 @@ class GraphDB:
                 G.add_weighted_edges_from(g_data)
                 g_entry['G'] = G
                 g_entry['V'] = len(G.nodes)
+                logger.debug(
+                    f"loading graph {key} with # of vertices={g_entry['V']}")
         return graph_db
 
     def plot_graph(self, graph_number: List[int] = [1]) -> None:
@@ -321,7 +313,7 @@ class GraphDB:
             plt.figure(figsize=(2, 2))
             for g_num in graph_number:
                 plt.clf()
-                G = self.graph[str(g_num)]['G']
+                G = self.db[str(g_num)]['G']
                 if _plots:
                     nx.draw_circular(G, **nx_plot_options)
                     plt.title('No. %s' % g_num, loc='right')
@@ -369,7 +361,6 @@ class GraphDB:
 
     def get_edge_sorted_graphs(self):
         sorted_graphs = {
-            "%d" %
             i: [] for i in range(
                 1, len(
                     self.db.keys()))}
