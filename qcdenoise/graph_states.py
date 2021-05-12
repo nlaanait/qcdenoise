@@ -1,17 +1,14 @@
-__all__ = [
-    "GraphData",
-    "HeinGraphData",
-    "partition_GraphData",
-    "GraphDB"]
 import logging
-import math
-import random
-from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
 
 import networkx as nx
 
-# initiate logger
+from .graph_data import GraphDB
+import qcdenoise
+
+
+__all__ = ["GraphState"]
+
+# module logger
 logger = logging.getLogger(__name__)
 formatter = logging.Formatter(
     "dataset- %(asctime)s - %(levelname)s - %(message)s",
@@ -21,10 +18,10 @@ ch = logging.StreamHandler()
 ch.setFormatter(formatter)
 logger.addHandler(ch)
 
-# plotting options
-try:
+# module plotting options
+_plots = qcdenoise.__plots__
+if _plots:
     import matplotlib.pyplot as plt
-    _plots = True
     nx_plot_options = {
         'with_labels': True,
         'node_color': 'red',
@@ -33,346 +30,104 @@ try:
         'font_weight': 'bold',
         'font_color': 'white',
     }
-except ImportError:
-    logger.warning(
-        "matplotlib could not be imported- skipping plotting.")
-    _plots = False
+else:
     nx_plot_options = None
 
 
-def offset(edge_list: list) -> list:
-    """offset edge ordering
+def partitions(n, start=2):
+    """Return all possible partitions of integer n
 
-    Args:
-        edge_list (list): list of tuples defining edges
+    Arguments:
+        n {int} -- integer
 
-    Returns:
-        new_l: offset list of tuples defining edges
+    Keyword Arguments:
+        start {int} -- starting position (default: {2})
+
+    Yields:
+        tuple -- returns tuples of partitions
     """
-    new_l = [(edge[0] - 1, edge[1] - 1, edge[-1])
-             for edge in edge_list]
-    return new_l
+    yield(n,)
+    for i in range(start, n // 2 + 1):
+        for p in partitions(n - i, i):
+            yield (i,) + p
 
 
-@dataclass(init=True)
-class GraphData:
-    """Stores data to define a graph via edges and their weights
-    """
-    data: Dict[str, List[Tuple]]
+class GraphState:
+    def __init__(self, graph_db: GraphDB, n_qubits: int) -> None:
+        self.graph_db = graph_db
+        assert n_qubits >= 2, logger.error(f"n_qubits={n_qubits} < 2")
+        self.n_qubits = n_qubits
+        self.all_graphs = graph_db.get_edge_sorted_graphs()
+        self.largest_subgraph = self._check_largest()
 
-    def groupby_edges(self) -> None:
-        """Groups data based on the # of edges per entry
-        """
-        grouped_g_data = {}
-        for _, itm in self.data.items():
-            n_nodes = len(itm)
-            if str(n_nodes) in grouped_g_data.keys():
-                grouped_g_data[str(n_nodes)].append(itm)
+    def build_graph(self, circuit_graph=None, graph_plot=False):
+        if circuit_graph is None:
+            # 1. Pick a random combination of subgraphs
+            sub_graphs = self.pick_subgraphs()
+            # 2. Combine subgraphs into a single circuit graph
+            circuit_graph = self.combine_subgraphs(sub_graphs)
+        self.circuit_graph = circuit_graph
+        if self.edge_list is None:
+            self.edge_list = self.circuit_graph.edges()
+        if graph_plot and _plots:
+            nx.draw_circular(circuit_graph, **nx_plot_options)
+
+    def _check_largest(self, val):
+        for key, itm in self.all_graphs.items():
+            if len(itm) != 0:
+                max_subgraph = key
+        if val is None:
+            return max_subgraph
+        elif val > max_subgraph:
+            .warn(
+                "The largest possible subgraph in the database has %s nodes" %
+                max_subgraph)
+            warnings.warn(
+                "Resetting largest possible subgraph: %s --> %s" %
+                (val, max_subgraph))
+            return max_subgraph
+        return val
+
+    def generate_all_subgraphs(self):
+        combs = list(
+            set(partitions(self.n_qubits, start=self.smallest_subgraph)))
+        for (itm, comb) in enumerate(combs):
+            if any([itm > self.largest_subgraph for itm in comb]):
+                combs.pop(itm)
+        if len(combs) == 0:
+            raise ValueError(
+                "Empty list of subgraph combinations. Circuit cannot be constructed as specified.")
+        return combs
+
+    def combine_subgraphs(self, sub_graphs):
+        if self.directed:
+            union_graph = nx.DiGraph()
+        else:
+            union_graph = nx.Graph()
+        for sub_g in sub_graphs:
+            union_nodes = len(union_graph.nodes)
+            if union_nodes > 1:
+                first_node = random.randint(
+                    0, union_graph.order() - 1)
+                second_nodes = np.random.randint(union_graph.order(), sub_g.order() + union_graph.order() - 1,
+                                                 sub_g.order())
+                union_graph = nx.disjoint_union(union_graph, sub_g)
+                for idx in second_nodes:
+                    union_graph.add_weighted_edges_from(
+                        [(first_node, idx, 1.0)])
             else:
-                grouped_g_data[str(n_nodes)] = [itm]
-        self.data = grouped_g_data
+                union_graph = nx.disjoint_union(union_graph, sub_g)
+        return union_graph
 
-    def __getattr__(self, name: str) -> Any:
-        if name == "keys":
-            return self.data.keys
-        elif name == "items":
-            return self.data.items
-
-
-# Graph data from Hein et al. arXiv:060296.
-# The keys correspond to the graph numbers in Table V
-HeinGraphData = GraphData(data={'1': [(1, 2, 1.0)],
-                                '2': [(1, 2, 1.0), (1, 3, 1.0)],
-                                '3': [
-    (1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0)],
-    '4': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0)],
-    '5': [
-    (1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0), (1, 5, 1.0)],
-    '6': [
-    (1, 2, 1.0), (2, 3, 1.0), (2, 5, 1.0), (3, 4, 1.0)],
-    '7': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0)],
-    '8': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 1, 1.0)],
-    '9': [
-    (1, 2, 1.0), (1, 3, 1.0), (1, 4, 1.0), (1, 4, 1.0), (1, 6, 1.0)],
-    '10': [
-    (1, 6, 1.0), (2, 6, 1.0), (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0)],
-    '11': [
-    (1, 6, 1.0), (2, 6, 1.0), (3, 5, 1.0), (4, 5, 1.0), (5, 6, 1.0)],
-    '12': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (6, 2, 1.0)],
-    '13': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (3, 6, 1.0)],
-    '14': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0)],
-    '15': [
-    (1, 6, 1.0), (2, 4, 1.0), (3, 4,
-                               1.0), (3, 6, 1.0), (4, 5, 1.0),
-    (5, 6, 1.0)],
-    '16': [
-    (1, 2, 1.0), (2, 3, 1.0), (2, 4,
-                               1.0), (3, 4, 1.0), (2, 6, 1.0),
-    (4, 5, 1.0)],
-    '17': [
-    (1, 2, 1.0), (1, 5, 1.0), (1, 6,
-                               1.0), (2, 3, 1.0), (3, 4, 1.0),
-    (4, 5, 1.0)],
-    '18': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4,
-                               1.0), (4, 5, 1.0), (5, 6, 1.0),
-    (6, 1, 1.0)],
-    '19': [(1, 2, 1.0), (1, 3, 1.0), (2, 3, 1.0), (2, 5, 1.0), (
-        3, 4, 1.0), (4, 5, 1.0), (4, 6, 1.0), (5, 6, 1.0), (6, 1, 1.0)],
-    '20': [
-    (1, 2, 1.0), (1, 3, 1.0), (1, 4,
-                               1.0), (1, 5, 1.0), (1, 6, 1.0),
-    (1, 7, 1.0)],
-    '21': [
-    (1, 7, 1.0), (7, 2, 1.0), (7, 3,
-                               1.0), (7, 4, 1.0), (5, 6, 1.0),
-    (6, 7, 1.0)],
-    '22': [
-    (1, 7, 1.0), (7, 2, 1.0), (7, 3,
-                               1.0), (7, 6, 1.0), (6, 4, 1.0),
-    (6, 5, 1.0)],
-    '23': [
-    (1, 7, 1.0), (7, 2, 1.0), (7, 3,
-                               1.0), (7, 6, 1.0), (6, 5, 1.0),
-    (5, 4, 1.0)],
-    '24': [
-    (1, 7, 1.0), (7, 6, 1.0), (7, 2,
-                               1.0), (6, 5, 1.0), (5, 3, 1.0),
-    (5, 4, 1.0)],
-    '25': [
-    (1, 2, 1.0), (1, 7, 1.0), (7, 3,
-                               1.0), (7, 4, 1.0), (7, 6, 1.0),
-    (6, 5, 1.0)],
-    '26': [
-    (1, 7, 1.0), (7, 2, 1.0), (7, 6,
-                               1.0), (6, 3, 1.0), (6, 5, 1.0),
-    (5, 4, 1.0)],
-    '27': [
-    (1, 2, 1.0), (2, 7, 1.0), (2, 3,
-                               1.0), (3, 4, 1.0), (4, 5, 1.0),
-    (5, 6, 1.0)],
-    '28': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4,
-                               1.0), (3, 5, 1.0), (5, 6, 1.0),
-    (6, 7, 1.0)],
-    '29': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4,
-                               1.0), (4, 5, 1.0), (3, 6, 1.0),
-    (6, 7, 1.0)],
-    '30': [
-    (1, 2, 1.0), (2, 3, 1.0), (3, 4,
-                               1.0), (4, 5, 1.0), (5, 6, 1.0),
-    (6, 7, 1.0)],
-    '31': [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0), (
-        3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 3, 1.0), (5, 7, 1.0)],
-    '32': [
-    (1, 7, 1.0), (2, 7, 1.0), (3, 6,
-                               1.0), (4, 5, 1.0), (5, 6, 1.0),
-    (6, 7, 1.0)],
-    '33': [(1, 3, 1.0), (2, 3, 1.0), (3, 4, 1.0),
-           (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)],
-    '34': [(1, 4, 1.0), (2, 3, 1.0), (3, 4, 1.0),
-           (3, 6, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
-    '35': [(1, 6, 1.0), (2, 3, 1.0), (3, 4, 1.0),
-           (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 3, 1.0)],
-    '36': [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0),
-           (3, 5, 1.0), (4, 5, 1.0), (4, 7, 1.0), (5, 6, 1.0)],
-    '37': [(1, 7, 1.0), (7, 6, 1.0), (6, 5, 1.0),
-           (5, 4, 1.0), (4, 3, 1.0), (3, 2, 1.0), (3, 7, 1.0)],
-    '38': [(1, 6, 1.0), (1, 2, 1.0), (2, 3, 1.0),
-           (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
-    '39': [(1, 5, 1.0), (1, 2, 1.0), (2, 3, 1.0),
-           (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
-    '40': [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0),
-           (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0), (7, 1, 1.0)],
-    '41': [(1, 2, 1.0), (2, 3, 1.0), (3, 4, 1.0), (
-        4, 5, 1.0), (5, 6, 1.0), (5, 1, 1.0), (6, 1, 1.0), (6, 7, 1.0)],
-    '42': [(1, 3, 1.0), (1, 7, 1.0), (2, 3, 1.0), (
-        2, 6, 1.0), (3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
-    '43': [(1, 2, 1.0), (1, 4, 1.0), (2, 3, 1.0), (
-        3, 4, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 3, 1.0), (7, 1, 1.0)],
-    '44': [(1, 4, 1.0), (1, 7, 1.0), (2, 3, 1.0), (2, 7, 1.0), (
-        3, 4, 1.0), (3, 5, 1.0), (4, 5, 1.0), (5, 6, 1.0), (6, 7, 1.0)],
-    '45': [(1, 2, 1.0), (2, 3, 1.0), (2, 5, 1.0), (2, 7, 1.0), (
-        3, 4, 1.0), (3, 7, 1.0), (4, 5, 1.0), (5, 6, 1.0), (4, 6, 1.0),
-    (6, 7, 1.0)]})
-
-
-def partition_GraphData(
-        graph_data: GraphData,
-        ratio: float = 0.2,
-        not_empty: bool = True) -> Tuple[GraphData, GraphData]:
-    """Two-way split of GraphData. Split is balanced across # of edges per graph
-
-    Args:
-        graph_data (GraphData): input GraphData to be split
-        ratio (float) : ratio of test to train (default: {0.8})
-        not_empty (bool) : ensures that each partition has at least 1 element
-
-    Returns:
-        (GraphData, GraphData) -- GraphData for the train and test datasets
-    """
-    test_g_data = []
-    train_g_data = []
-    graph_data.groupby_edges()
-    # grouped_g_data = graph_data.groupby_edges()
-
-    # shuffle each category and 2-way split
-    for _, itm in graph_data.items():
-        if len(itm) > 2:
-            random.shuffle(itm)
-            part = math.ceil(len(itm) * ratio)
-            test = itm[: part]
-            train = itm[part:]
-            if len(train) > 1:
-                test_g_data.append(test)
-                train_g_data.append(train)
-            else:
-                test_g_data.append(test)
-                train_g_data.append(test)
-        elif not_empty:
-            test_g_data.append(itm)
-            train_g_data.append(itm)
-        else:
-            part = random.choices(
-                ["test", "train"], weights=[0.5, 0.5])
-            if part == "test":
-                test_g_data.append(itm)
-            else:
-                train_g_data.append(itm)
-    logger.debug("Test Data -  # of graph examples per # of edges in graph:" +
-                 f"{[len(itm) for itm in test_g_data]}")
-    logger.debug("Train Data- # of graph examples per # of edges in graph:" +
-                 f"{[len(itm) for itm in train_g_data]}")
-
-    # collapse categories into a single list
-    test_data = []
-    for items in test_g_data:
-        if len(items) > 1 and isinstance(items[0], list):
-            for itm in items:
-                test_data.append(itm)
-        else:
-            test_data.append(items[0])
-
-    train_data = []
-    for items in train_g_data:
-        if len(items) > 1 and isinstance(items[0], list):
-            for itm in items:
-                train_data.append(itm)
-        else:
-            train_data.append(items[0])
-    logger.info(
-        f"# of Graphs in Train Partition: {len(train_data)}. " +
-        f"# of Graphs in Test Partition: {len(test_data)}")
-    train_data = GraphData(
-        data={
-            key: item for key,
-            item in enumerate(train_data)})
-    test_data = GraphData(
-        data={
-            key: item for key,
-            item in enumerate(test_data)})
-    return train_data, test_data
-
-
-class GraphDB:
-    def __init__(self, graph_data: GraphData = HeinGraphData,
-                 directed: bool = False):
-        self.directed = directed
-        self.graph_data = graph_data
-        self.graph = self._build_graphDB()
-
-    def _build_graphDB(self):
-        """builds a dict out of networkx graphs
-
-        Returns:
-            graph_db (dict): built dictionary
-        """
-        graph_db = dict([('%d' % d, {'G': None, 'V': None, 'LUclass': None, '2Color': None})
-                         for d in range(1, len(self.graph_data.keys()) + 1)])
-        for (_, g_entry), (_, g_data) in zip(
-                graph_db.items(), self.graph_data.items()):
-            if g_data:
-                g_data = offset(g_data)
-                if self.directed:
-                    G = nx.DiGraph()
-                else:
-                    G = nx.Graph()
-                G.add_weighted_edges_from(g_data)
-                g_entry['G'] = G
-                g_entry['V'] = len(G.nodes)
-        return graph_db
-
-    def plot_graph(self, graph_number: List[int] = [1]) -> None:
-        """plot the graph
-
-        Args:
-            graph_number (list, optional): list of keys whose graphs will be
-            plotted. Defaults to [1].
-        """
-        graph_number = list(
-            self.graph.keys()) if graph_number is None else graph_number
-        if _plots:
-            plt.figure(figsize=(2, 2))
-            for g_num in graph_number:
-                plt.clf()
-                G = self.graph[str(g_num)]['G']
-                if _plots:
-                    nx.draw_circular(G, **nx_plot_options)
-                    plt.title('No. %s' % g_num, loc='right')
-                    plt.show()
-        else:
-            logger.warning(
-                "matplotlib could not be imported- skipping plots.")
-
-    def test_graph_build(self, graph_number: int = 1) -> None:
-        """Tests graph building. This is useful when testing a new GraphData object
-           1. Building the graph
-           2. Printing nodes, neighbors and weight values
-           3. Plotting the built graph.
-
-           if `graph_number` is None then all graphs in graph_data are built and tested
-
-        Keyword Arguments:
-            graph_number {int} -- [description] (default: {1})
-        """
-        if _plots:
-            plt.figure(figsize=(2, 2))
-            for g_num, g_data in self.graph_data.items():
-                plt.clf()
-                cond = True
-                if graph_number is not None:
-                    cond = g_num == str(graph_number)
-                if g_data and cond:
-                    if self.directed:
-                        G = nx.DiGraph()
-                    else:
-                        G = nx.Graph()
-                    G.add_weighted_edges_from(g_data)
-                    # log nodes and neighbors
-                    for node, ngbrs in G.adjacency():
-                        for ngbr, edge_attr in ngbrs.items():
-                            logger.info(f"Node:{node}, Neighbor:{ngbr}," +
-                                        f"Weight:{edge_attr['weight']}")
-                    # plot
-                    nx.draw_circular(G, **nx_plot_options)
-                    plt.title('No. %s' % g_num, loc='right')
-                    plt.show()
-        else:
-            logger.warning(
-                "matplotlib could not be imported- skipping plots.")
-
-    def __getitem__(self, key: str) -> dict:
-        return self.graph[key]
-
-    def __getattr__(self, name: str) -> Any:
-        if name == "keys":
-            return self.graph.keys
-        elif name == "items":
-            return self.graph.items
+    def pick_subgraphs(self):
+        comb_idx = random.randint(0, len(self.graph_combs) - 1)
+        comb = self.graph_combs[comb_idx]
+        self.print_verbose(
+            "Configuration with {} Subgraphs with # nodes:{}".format(
+                len(comb), comb))
+        sub_graphs = []
+        for num_nodes in comb:
+            sub_g = self.all_graphs[num_nodes]
+            idx = random.randint(0, len(sub_g) - 1)
+            sub_graphs.append(sub_g[idx])
+        return sub_graphs

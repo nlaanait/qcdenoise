@@ -3,7 +3,7 @@ from .circuit_constructors import GHZCircuit, GraphCircuit
 from .circuit_sampling_utils import *
 from .io_utils import *
 from .ml_models import *
-from .graph_states import *
+from .graph_data import *
 
 import logging
 
@@ -18,5 +18,16 @@ seed_everything(__seed__)
 
 # flake8: noqa: F403, F401
 
+# set logger
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
+
+# set plotting flag
+# plotting options
+try:
+    import matplotlib.pyplot as plt
+    __plots__ = True
+except ImportError:
+    logger.warning(
+        "matplotlib could not be imported- skipping plotting.")
+    __plots__ = False

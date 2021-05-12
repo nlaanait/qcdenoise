@@ -14,7 +14,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
-from .graph_states import GraphDB, _plots, nx_plot_options
+from .graph_data import GraphDB, _plots, nx_plot_options
 from .stabilizer_measurement import sigma_prod, build_stabilizer_meas, get_unique_operators
 # from .graph_functions import partitions, d2_neighborhood
 d2_neighborhood = None

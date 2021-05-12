@@ -1,6 +1,6 @@
 import pytest
 
-from qcdenoise.graph_states import GraphData, partition_GraphData, GraphDB
+from qcdenoise import GraphData, partition_GraphData, GraphDB
 
 
 @pytest.fixture()
