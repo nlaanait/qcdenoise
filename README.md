@@ -43,5 +43,4 @@ pytest tests
 ```
 ### Authors
 * Numan Laanait- [@nlaanait](https://github.com/nlaanait)
-* Kathleen Hamilton- [@k8hamilton](https://github.com/k8hamilton)
-
+* Kathleen Hamilton- [@kmz4](https://github.com/kmz4)
