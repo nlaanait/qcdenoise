@@ -274,11 +274,12 @@ class GraphDB:
         self.directed = directed
         self.graph_data = graph_data
         if graph_data == HeinGraphData:
-            logger.info("Building database with Graphs from Hein et al. ")
+            logger.info(
+                "Building database with Graphs from Hein et al. ")
         self.db = self._build_graphDB()
 
     def _build_graphDB(self):
-        """builds a dict out of networkx graphs
+        """populate a dictionary out of networkx graphs
 
         Returns:
             graph_db (dict): built dictionary
@@ -359,7 +360,13 @@ class GraphDB:
             logger.warning(
                 "matplotlib could not be imported- skipping plots.")
 
-    def get_edge_sorted_graphs(self):
+    def get_edge_sorted_graphs(self) -> Dict:
+        """return a dictionary with keys/vals assigned to graphs with
+        same # of edges
+
+        Returns:
+            dict: sorted graph dictionary
+        """
         sorted_graphs = {
             i: [] for i in range(
                 1, len(

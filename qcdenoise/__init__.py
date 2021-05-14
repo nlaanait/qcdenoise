@@ -1,10 +1,11 @@
 from .circuit_samplers import *
-from .circuit_constructors import GHZCircuit, GraphCircuit
+# from .circuit_constructors import GHZCircuit, GraphCircuit
 from .circuit_sampling_utils import *
 from .io_utils import *
 from .ml_models import *
 from .graph_data import *
 from .graph_state import *
+from .graph_circuit import *
 from .config import *
 
 import logging

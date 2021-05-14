@@ -122,7 +122,16 @@ class GraphState:
             plt.show()
         return graph_state
 
-    def _check_largest(self, val):
+    def _check_largest(self, val: int) -> int:
+        """Check that input value matches the largest # of graph nodes in the database
+
+        Args:
+            val (int): input value to check
+
+        Returns:
+            int: input value or largest # of graph nodes in the database
+            if different
+        """
         for key, itm in self.all_graphs.items():
             if len(itm) != 0:
                 max_subgraph = key
@@ -137,7 +146,17 @@ class GraphState:
             return max_subgraph
         return val
 
-    def _generate_all_subgraphs(self):
+    def _generate_all_subgraphs(self) -> list:
+        """Return all possible (unique) subgraph combinations to build the
+        desired graph
+
+        Raises:
+            ValueError: if there are no combinations of subgraphs which
+            generate the desired graph
+
+        Returns:
+            list: subgraph combinations
+        """
         combs = list(
             set(partitions(self.n_qubits, start=self.smallest_subgraph)))
         for (itm, comb) in enumerate(combs):
@@ -147,9 +166,11 @@ class GraphState:
             raise ValueError(
                 "Empty list of subgraph combinations." +
                 "Circuit cannot be constructed as specified.")
+        logger.debug(f"# of subgraphs combinations {len(combs)}")
         return combs
 
-    def combine_subgraphs(self, sub_graphs):
+    def combine_subgraphs(
+            self, sub_graphs: list) -> Union[nx.Graph, nx.DiGraph]:
         if self.directed:
             union_graph = nx.DiGraph()
         else:
@@ -173,10 +194,15 @@ class GraphState:
         return union_graph
 
     def pick_subgraphs(self):
+        """Generate a combination of subgraphs
+
+        Returns:
+            list: list of subgraphs
+        """
         comb_idx = random.randint(0, len(self.graph_combs) - 1)
         comb = self.graph_combs[comb_idx]
         logger.debug(
-            f"Sampled configuration with {len(comb)} Subgraphs with # nodes:{comb}")
+            f"Sampled configuration:{len(comb)} Subgraphs with # nodes:{comb}")
         sub_graphs = []
         for num_nodes in comb:
             sub_g = self.all_graphs[num_nodes]
