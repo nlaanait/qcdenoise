@@ -33,7 +33,7 @@ See `examples`
 ### Development
 #### structure 
 Below is a high-level structure of the package
-![flow chart](../qcdenoise/qcdenoise_flow_chart.png)
+![flow chart](qcdenoise_flow_chart.png)
 
 #### testing
 We use `pytest` to test the package.
