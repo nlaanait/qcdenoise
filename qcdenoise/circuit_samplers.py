@@ -51,11 +51,11 @@ def get_backendProp(backend_dict):
     qbits_props = backend_dict['qubits']
     gates_props = backend_dict['gates']
     qubits_nduv = []
-    for (qbit_num, qbit_prop) in enumerate(qbits_props):
+    for (_, qbit_prop) in enumerate(qbits_props):
         q_nduv = PropToNduv(qbit_prop, "qubit")
         qubits_nduv.append(q_nduv)
     gates = []
-    for (gate_num, gate_prop) in enumerate(gates_props):
+    for (_, gate_prop) in enumerate(gates_props):
         gate = gatePropToGate(gate_prop)
         gates.append(gate)
     date = datetime.datetime.now(tz=datetime.timezone.utc)
@@ -66,7 +66,8 @@ def get_backendProp(backend_dict):
     backendProp = BackendProperties(backend_name=backend_name,
                                     backend_version=backend_version,
                                     qubits=qubits_nduv, gates=gates,
-                                    last_update_date=last_update_date, general=general)
+                                    last_update_date=last_update_date,
+                                    general=general)
     return backendProp
 
 
@@ -165,7 +166,7 @@ class CircuitSampler:
             "coupling_map": self.coupling,
             "basis_gates": basis_gates,
             "callback": get_dag}
-       
+
         if optimize:
             trans_args["optimization_level"] = 3
         else:
@@ -606,6 +607,7 @@ class HardwareSampler(DeviceNoiseSampler):
     Args:
         DeviceNoiseSampler ([type]): [description]
     """
+
     def __init__(self, *args, **kwargs):
         """initialize
         """
@@ -616,7 +618,7 @@ class HardwareSampler(DeviceNoiseSampler):
         self.noise = False
 
     def screen_backend_dict(self):
-        """Screen the backend properties dict and only keep keys relevant to building a noise model.   
+        """Screen the backend properties dict and only keep keys relevant to building a noise model.
 
            See `DeviceNoiseSpec()` for relevant keys.
         """
@@ -641,7 +643,7 @@ class HardwareSampler(DeviceNoiseSampler):
         """builds the adjacency tensor of qubits/gates after transpiling the circuit
 
         Args:
-            max_tensor_dims (tuple, optional): adjacency tensor dimensions. Defaults to (16, 32, 32).  
+            max_tensor_dims (tuple, optional): adjacency tensor dimensions. Defaults to (16, 32, 32).
             basis_gates (list, optional): gates to encode in the adjacency tensor. Defaults to ['id','cx','u1','u2','u3'].
             fixed_size (bool, optional): trims the adjacency tensor to max_tensor_dims. Defaults to True.
             undirected (bool, optional): treats the circuit as undirected graph. Defaults to True.
@@ -662,7 +664,7 @@ class HardwareSampler(DeviceNoiseSampler):
         """sample the circuit
 
         Args:
-            execute (bool, optional): submit circuit for execution on hardware. Defaults to False.  
+            execute (bool, optional): submit circuit for execution on hardware. Defaults to False.
             job_name (string, optional): name to assign to a job. Defaults to None.
 
         Returns:
