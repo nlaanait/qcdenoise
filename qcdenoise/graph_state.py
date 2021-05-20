@@ -98,15 +98,19 @@ class GraphState:
         while itr < max_itr:
             # 1. Pick a random combination of subgraphs
             sub_graphs = self.pick_subgraphs()
+
             # 2. Combine subgraphs into a single circuit graph
             graph_state = self.combine_subgraphs(sub_graphs)
+
             # 3. Screen based on size of minimum vertex cover
             min_cover = vertex_cover.min_weighted_vertex_cover(
                 graph_state, weight="weight")
+
             # FIXME: only valid when weights of all nodes are 1
             min_cover = len(min_cover) // 2
             logger.debug(
                 f"graph state iteration={itr}, vertex cover={min_cover}")
+
             # repeat (up to `max_itr`) to find a graph with a minimum
             if min_cover >= min_vertex_cover:
                 break
@@ -115,6 +119,7 @@ class GraphState:
                     "sampled graph state does not satisfy min_vertex_cover.")
                 break
             itr += 1
+
         if graph_plot and _plots:
             plt.figure(figsize=(2, 2))
             nx.draw_circular(graph_state, **nx_plot_options)
