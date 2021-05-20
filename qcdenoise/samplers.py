@@ -1,21 +1,25 @@
 import datetime
 import io
-import abc
 import logging
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Union
 from random import uniform, choices
 
 import numpy as np
 import qiskit as qk
-from qiskit.providers import Backend
+from qiskit.tools import job_monitor
+from qiskit.test.mock.fake_pulse_backend import FakePulseBackend
+from qiskit.providers.ibmq import IBMQBackend
 from qiskit.providers.aer.noise import NoiseModel, errors
 from qiskit.providers.models.backendproperties import (BackendProperties, Gate,
                                                        Nduv)
 
-__all__ = ["UnitaryNoiseSampler", "unitary_noise_spec", "DeviceNoiseSampler",
-           "device_noise_spec"]
+__all__ = ["UnitaryNoiseSampler",
+           "unitary_noise_spec",
+           "DeviceNoiseSampler",
+           "device_noise_spec",
+           "HardwareSampler"]
 
 # module logger
 logger = logging.getLogger(__name__)
@@ -241,36 +245,38 @@ class CircuitSampler:
     """
 
     def __init__(self,
-                 backend: Backend = None,
+                 backend: Union[IBMQBackend, FakePulseBackend] = None,
                  n_shots: int = 1024,
                  noise_specs: NoiseSpec = None) -> None:
         """initialization
 
         Args:
-            backend (Backend): quantum backend to use
+            backend (IBMQBackend, FakePulseBackend): quantum backend to use.
             n_shots (int, optional): as it says. Defaults to 1024.
             noise_specs (NoiseSpec, optional): specs to build a noise model.
             Defaults to None.
         """
         self.n_shots = n_shots
         if backend:
-            assert isinstance(backend, (Backend, abc.ABCMeta)), logger.error(
-                "passed backend is not instance of qiskit.providers.Backend")
+            assert isinstance(backend, (IBMQBackend, FakePulseBackend)), \
+                logger.error(
+                    "passed backend is not instance of IBMQBackend" +
+                    "or FakePulseBackend (mock backend)")
         self.backend = backend
         self.transpiled_circuit = None
         self.circuit_dag = None
+        self.noise_model = None
         if noise_specs:
             assert isinstance(noise_specs, NoiseSpec), logger.error(
                 "noise models specs is not an instance of NoiseSpec")
-        self.noise_specs = noise_specs
-        if self.noise_specs.specs:
-            self.noisy = True
-            logger.debug(
-                f"Adding Noise Model with specs={self.noise_specs.specs}")
-        else:
-            self.noisy = False
-            logger.debug("No Noise Model: ideal simulation")
-        self.noise_model = None
+            self.noise_specs = noise_specs
+            if self.noise_specs.specs:
+                self.noisy = True
+                logger.debug(
+                    f"Adding Noise Model with specs={self.noise_specs.specs}")
+            else:
+                self.noisy = False
+                logger.debug("No Noise Model: ideal simulation")
 
     def sample(self, *args, **kwargs):
         """method to sample from a q-circuit
@@ -288,8 +294,12 @@ class CircuitSampler:
         """
         raise NotImplementedError
 
-    def execute_circuit(self, execute: bool = False,
-                        job_name: str = "placeholder"):
+    def execute_circuit(self, circuit: qk.QuantumCircuit,
+                        execute: bool = False,
+                        job_name: str = "placeholder") -> Dict:
+        assert isinstance(self.backend, IBMQBackend), logger.error(
+            "passed backend must be an IBMQBackend to execute on hardware")
+        logger.info("Assembling Circuit for hardware backend")
         if self.transpiled_circuit:
             qobj = qk.assemble(
                 self.transpiled_circuit,
@@ -299,12 +309,13 @@ class CircuitSampler:
             logger.error(
                 "circuit must be transpiled via CircuitSampler.transpile")
         if execute:
+            logger.info("Executing circuit job")
             job = self.backend.run(qobj, job_name)
             return {"job": job, "qobj": qobj}
         return {"job": None, "qobj": qobj}
 
     def simulate_circuit(self, circuit: qk.QuantumCircuit):
-        logger.debug("Simulating Circuit on AerSimulator")
+        logger.info("Simulating Circuit on AerSimulator")
         job = qk.execute(circuit, backend=qk.Aer.get_backend("aer_simulator"),
                          noise_model=self.noise_model,
                          shots=self.n_shots)
@@ -313,7 +324,7 @@ class CircuitSampler:
 
     def transpile_circuit(
             self, circuit: qk.QuantumCircuit, transpile_kwargs: Dict):
-        logger.debug(
+        logger.info(
             "Transpiling circuit and generating the circuit DAG")
 
         def get_dag(**kwargs):
@@ -328,19 +339,48 @@ class CircuitSampler:
             return dag
 
         self.transpiled_circuit = qk.transpile(
-            circuit.decompose(), callback=get_dag, **transpile_kwargs)
+            circuit.decompose(), callback=get_dag, backend=self.backend,
+            **transpile_kwargs)
         self.circuit_dag = dag
 
 
 class UnitaryNoiseSampler(CircuitSampler):
+    """sampling of circuits using a noise model which transforms inserted
+    identity unitary gates into noisy channels.
+    Every call to `sample()` produces a new noise model and executes the
+    circuit measurements.
+
+    # Example:
+    ```python
+    # GraphState() --> GraphCircuit().build() --> circ_dict
+    sampler = qcd.UnitaryNoiseSampler()
+    sampler.sample(circ_dict["circuit"], circ_dict["ops"])
+    ```
+    """
+
     def __init__(self,
                  n_shots: int = 1024,
-                 noise_specs: NoiseSpec = None) -> None:
+                 noise_specs: NoiseSpec = unitary_noise_spec) -> None:
+        """initialization
+
+        Args:
+            n_shots (int, optional): # of shots. Defaults to 1024.
+            noise_specs (NoiseSpec, optional): specs for the noise model.
+            Defaults to unitary_noise_spec.
+        """
         super().__init__(
             n_shots=n_shots,
             noise_specs=noise_specs)
 
-    def build_noise_model(self, ops_labels):
+    def build_noise_model(self, ops_labels: list):
+        """construct a noise model. In addition to `phase_amplitude_damping`
+        and `amplitdue_damping_error`, other noisy channels in Aer.error are
+        supported but not tested.
+
+        Args:
+            ops_labels (list): list of unitary identities operator names in the
+            circuit to be transformed into noisy channels.
+        """
         self.noise_model = NoiseModel()
         error_specs = deepcopy(self.noise_specs.specs)
         error_type = error_specs.pop('type')
@@ -359,7 +399,18 @@ class UnitaryNoiseSampler(CircuitSampler):
             self.noise_model.add_basis_gates(['unitary'])
 
     @ staticmethod
-    def get_phase_amp_damp_error(func, max_prob=0.1):
+    def get_phase_amp_damp_error(
+            func: Callable, max_prob: float = 0.1):
+        """construct a 1-qubit error using phase amplitude damping
+
+        Args:
+            func (Callable): qiskit.aer.error.phase_amplitude_damping_error
+            max_prob (float, optional): highest damping error value.
+            Defaults to 0.1.
+
+        Returns:
+            qiskit.aer.error: noisy channel
+        """
         phases = np.random.uniform(high=max_prob, size=2)
         amps = [min(0, 0.5 - phase)
                 for phase in phases]  # hack to force CPTP
@@ -370,6 +421,16 @@ class UnitaryNoiseSampler(CircuitSampler):
 
     @ staticmethod
     def get_amp_damp_error(func, max_prob=0.1):
+        """construct a 1-qubit error using amplitude damping
+
+        Args:
+            func (Callable): qiskit.aer.error.amplitude_damping_error
+            max_prob (float, optional): highest damping error value.
+            Defaults to 0.1.
+
+        Returns:
+            qiskit.aer.error: noisy channel
+        """
         amps = np.random.uniform(high=max_prob, size=2)
         q_error_1 = func(amps[0])
         q_error_2 = func(amps[1])
@@ -377,7 +438,17 @@ class UnitaryNoiseSampler(CircuitSampler):
         return unitary_error, amps
 
     def sample(self, circuit: qk.QuantumCircuit,
-               ops_labels: list):
+               ops_labels: list) -> np.ndarray:
+        """sample a probability vector by measuring the circuit
+
+        Args:
+            circuit (qk.QuantumCircuit): circuit to be executed
+            ops_labels (list): list of unitary identities operator names in the
+            circuit to be transformed into noisy channels.
+
+        Returns:
+            (np.ndarray): probability vector of all-measurement outcomes.
+        """
         assert isinstance(circuit, qk.QuantumCircuit), logger.error(
             "passed circuit is not an instance of qiskit.QuantumCircuit")
 
@@ -397,15 +468,51 @@ class UnitaryNoiseSampler(CircuitSampler):
 
 
 class DeviceNoiseSampler(CircuitSampler):
-    def __init__(self, backend: Backend = None, n_shots: int = 1024,
-                 noise_specs: NoiseSpec = None) -> None:
+    """sampling of circuits using a noise model built from a backend properties.
+
+    `sample()` will only produce a new noise model if `user_backend` flag is
+    `False`, otherwise the backend defined at initialization is reused.
+
+    # Example:
+    ```python
+    from qiskit.test.mock import FakeMontreal
+    # GraphState() --> GraphCircuit().build() --> circ_dict
+    sampler = qcd.DeviceNoiseSampler(backend=FakeMontreal)
+    sampler.sample(circ_dict["circuit"])
+    ```
+    """
+
+    def __init__(self, backend: Union[IBMQBackend, FakePulseBackend], n_shots: int = 1024,
+                 noise_specs: NoiseSpec = device_noise_spec) -> None:
+        """initialization
+
+        Args:
+            backend (Backend): backend is not optional arg and is needed for
+            transpilation. mock backends (e.g. FakeMontreal) and IBMQBackend
+            are supported.
+            n_shots (int, optional): # of shots. Defaults to 1024.
+            noise_specs (NoiseSpec, optional): specs of the noise model.
+            Defaults to device_noise_spec.
+        """
         super().__init__(
             backend=backend,
             n_shots=n_shots,
             noise_specs=noise_specs)
         self.backend_props = None
 
-    def sample(self, circuit: qk.QuantumCircuit):
+    def sample(self, circuit: qk.QuantumCircuit,
+               user_backend: bool = False) -> np.ndarray:
+        """sample a probability vector by measuring the circuit
+
+        Args:
+            circuit (qk.QuantumCircuit): circuit to be execute
+            user_backend (bool, optional): flag to use the input backend or
+            build a fake backend properties (see `build_noise_model()`).
+            Defaults to False.
+
+        Returns:
+            np.ndarray: probability vector of all-measurement outcomes.
+        """
         assert isinstance(circuit, qk.QuantumCircuit), logger.error(
             "passed circuit is not an instance of qiskit.QuantumCircuit")
 
@@ -413,7 +520,9 @@ class DeviceNoiseSampler(CircuitSampler):
         self.transpile_circuit(circuit, {})
 
         # build the noise model
-        self.build_noise_model(circuit.num_qubits)
+        self.build_noise_model(
+            circuit.num_qubits,
+            user_backend=user_backend)
 
         # add state preparation errors
         self.stateprep_errors(circuit)
@@ -429,52 +538,71 @@ class DeviceNoiseSampler(CircuitSampler):
             prob_dict, circuit.num_qubits, self.n_shots)
         return prob_vec
 
-    def stateprep_errors(self, circuit, zero_init=True):
+    def stateprep_errors(
+            self, circuit: qk.QuantumCircuit, zero_init: bool = True):
+        """generate qubit initialization errors
+
+        Args:
+            circuit (qk.QuantumCircuit): quantum circuit
+            zero_init (bool, optional): if True (False) qubits are initialized
+            to 0 (1) with a small probability of ending up in 1 (0) state.
+            Defaults to True.
+        """
         if self.noisy:
-            q_props = self.backend_props["qubits"]
-            for qbit, q_prop in zip(circuit.qubits, q_props):
-                for error_props in q_prop:
-                    if error_props["name"] == "prob_meas1_prep0":
-                        zero_weights = [
-                            1 - error_props["value"],
-                            error_props["value"]]
-                    elif error_props["name"] == "prob_meas0_prep1":
-                        one_weights = [
-                            error_props["value"],
-                            1 - error_props["value"]]
+            q_props = self.noise_specs.specs["qubit"]
+            for qbit in circuit.qubits:
+                prob_error = q_props["prob_meas1_prep0"]
+                zero_weights = [1 - prob_error, prob_error]
+                prob_error = q_props["prob_meas0_prep1"]
+                one_weights = [prob_error, 1 - prob_error]
                 weights = zero_weights if zero_init else one_weights
                 stateprep = choices(
                     [[0, 1], [1, 0]], weights=weights)[0]
                 circuit.initialize(stateprep, qbit)
             logger.debug("Applied State Prep Errors")
 
-    def build_noise_model(self, n_qubits: int):
+    def build_noise_model(self, n_qubits: int,
+                          user_backend: bool = True):
+        """construct a fake backend whose properties are randomly assigned within
+        the constraints specified via noise_specs.
+
+        Args:
+            n_qubits (int): # of qubits
+            user_backend (bool, optional): If True the noise_model is built
+            from the properties of backend specified at initialization.
+            Otherwise a fake backend properties is built. Defaults to True.
+        """
         self.noise_model = NoiseModel()
         if self.noisy:
-            # if self.backend:
-            #     # populate noise_model from backend
-            #     self.backend_props = self.backend().properties()
-            #     self.noise_model = NoiseModel.from_backend(
-            #         self.backend().properties())
-            #     logger.debug(
-            #         "Building NoiseModel from user input backend")
-            # else:
-            # construct a mock backend (properties) and use in
-            # noise_model
-            self.backend_props = self._generate_backend_dict(
-                n_qubits)
-            backendProp = get_backendProp(self.backend_props)
-            logger.debug("Generated BackendProps Dict")
-            logger.debug(
-                f"qubits:\n{self.backend_props['qubits']}\n")
-            logger.debug(
-                f"gates:\n{self.backend_props['gates']}\n")
-            self.noise_model = NoiseModel.from_backend(
-                backendProp)
-            logger.debug(
-                "Building NoiseModel from custom fake backend")
+            if self.backend:
+                # populate noise_model from backend
+                self.backend_props = self.backend.properties()
+                self.noise_model = NoiseModel.from_backend(
+                    self.backend_props)
+                logger.debug(
+                    "Building NoiseModel from user input backend")
+            else:
+                # construct a mock backend (properties) and use in
+                # noise_model
+                self.backend_props = self._generate_backend_dict(
+                    n_qubits)
+                backendProp = get_backendProp(self.backend_props)
+                logger.debug("Generated BackendProps Dict")
+                logger.debug(
+                    f"qubits:\n{self.backend_props['qubits']}\n")
+                logger.debug(
+                    f"gates:\n{self.backend_props['gates']}\n")
+                self.noise_model = NoiseModel.from_backend(
+                    backendProp)
+                logger.debug(
+                    "Building NoiseModel from custom fake backend")
 
-    def _generate_qbit_props(self):
+    def _generate_qbit_props(self) -> Dict:
+        """helper method to generate fake backend properties
+
+        Returns:
+            Dict: qubit properties dictionaries
+        """
         dicts = []
         date = datetime.datetime.now(tz=datetime.timezone.utc)
         for name in self.noise_specs.specs["qubit"].keys():
@@ -495,7 +623,16 @@ class DeviceNoiseSampler(CircuitSampler):
             dicts.append(ent)
         return dicts
 
-    def _generate_gate_props(self, name, specs):
+    def _generate_gate_props(self, name: str, specs: dict) -> dict:
+        """helper method to generate fake backend properties
+
+        Args:
+            name (str): name of gate
+            specs (dict): gate and qubit specifications
+
+        Returns:
+            dict: gate properties
+        """
         date = datetime.datetime.now(tz=datetime.timezone.utc)
         gate_dict = {}
         gate_dict["qubits"] = specs["qubits"]
@@ -509,7 +646,15 @@ class DeviceNoiseSampler(CircuitSampler):
                                    for error_type in self.noise_specs.specs['cx'].keys()]
         return gate_dict
 
-    def _generate_backend_dict(self, n_qubits: int):
+    def _generate_backend_dict(self, n_qubits: int) -> dict:
+        """helper method to generate fake backend properties
+
+        Args:
+            n_qubits (int): # of qubits
+
+        Returns:
+            dict: backend properties
+        """
         date = datetime.datetime.now(tz=datetime.timezone.utc)
         gate_specs = self._get_gate_specs()
         random_props = {"qubits": [self._generate_qbit_props()
@@ -522,12 +667,32 @@ class DeviceNoiseSampler(CircuitSampler):
         random_props["backend_version"] = "0.0.0"
         return random_props
 
-    def _get_random_value(self, name, op):
-        max_val = self.noise_specs.specs[op][name]
-        val = uniform(0, max_val)
-        return val
+    def _get_random_value(self, name: str, op: str) -> float:
+        """uniformly sample a random number given bounds determined by
+        noise_specs
 
-    def _get_gate_specs(self):
+        Args:
+            name (str): name of gate
+            op (str): gate property
+
+        Returns:
+            float: random value
+        """
+        try:
+            max_val = self.noise_specs.specs[op][name]
+            val = uniform(0, max_val)
+            return val
+        except KeyError:
+            logger.warning(
+                f"key {op, name} is not in input noise_specs")
+            return 1e-6
+
+    def _get_gate_specs(self) -> dict:
+        """generate gate dictionary by traversing gate nodes of the transpiled
+        DAG circuit.
+        Returns:
+            dict: dictionary of gate specs: 'name', 'qubits'
+        """
         gate_specs = {}
         for gate in self.circuit_dag.gate_nodes():
             qubits = gate.qargs
@@ -547,3 +712,51 @@ class DeviceNoiseSampler(CircuitSampler):
                             "gate": gate.name, "qubits": [
                                 q_idx_1, q_idx_2]}
         return gate_specs
+
+
+class HardwareSampler(CircuitSampler):
+    def __init__(self, backend: IBMQBackend, n_shots: int,
+                 ) -> None:
+        super().__init__(
+            backend=backend,
+            n_shots=n_shots)
+
+    def sample(self, circuit: qk.QuantumCircuit,
+               execute: bool = False,
+               job_name: str = "placeholder") -> Union[dict, np.ndarray]:
+        """sample a probability vector by measuring the circuit
+
+        Args:
+            circuit (qk.QuantumCircuit): quantum circuit to execute
+            execute (bool, optional): if True execute and return probability
+            vector, else return {job: None, qobj: assembled circuit to be
+            executed by user}. Defaults to False.
+            job_name (str, optional): . Defaults to 'placeholder'.
+
+        Returns:
+            Union[dict, np.ndarray]: [description]
+        """
+        assert isinstance(circuit, qk.QuantumCircuit), logger.error(
+            "passed circuit is not an instance of qiskit.QuantumCircuit")
+
+        # attach measurement ops to circuit
+        circ = circuit.measure_all(inplace=False)
+
+        # transpile
+        self.transpile_circuit(circ, {})
+
+        # assemble (and execute)
+        qjob_dict = self.execute_circuit(circuit=circ,
+                                         execute=execute, job_name=job_name)
+
+        if execute:
+            # check that job has finished
+            job_monitor(qjob_dict["job"], interval=5)
+            # generate full probability vector
+            prob_vec = convert_to_prob_vector(
+                qjob_dict["job"].result().get_counts(0),
+                circuit.num_qubits,
+                self.n_shots)
+            return prob_vec
+
+        return qjob_dict
