@@ -139,7 +139,6 @@ def generate_adjacency_tensor(
         logging.error(
             "dag must be an instance of qiskit.dagcircuit.dagcircuit")
     adj_tensor = np.zeros(adj_tensor_dim)
-    gate_specs = {}
     encoding = encoding if encoding else {
         'id': 0, 'cx': 1, 'u1': 2, 'u2': 3, 'u3': 4}
     for gate in dag.gate_nodes():
@@ -147,10 +146,6 @@ def generate_adjacency_tensor(
         if qubits:
             if len(qubits) == 1:
                 q_idx = qubits[0].index
-                gate_name = "%s_%d" % (gate.name, q_idx)
-                if gate_name not in gate_specs.keys():
-                    gate_specs[gate_name] = {
-                        "gate": gate.name, "qubits": [q_idx]}
                 plane_idx = 0
                 write_success = False
                 while plane_idx < adj_tensor.shape[0]:
@@ -163,16 +158,10 @@ def generate_adjacency_tensor(
                         plane_idx += 1
                 if not write_success:
                     logging.warning("max # of planes in the adjacency tensor" +
-                                    f"have been exceeded. Initialize a larger" +
-                                    f"adjacency tensor to avoid truncation.")
+                                    "have been exceeded. Initialize a larger" +
+                                    "adjacency tensor to avoid truncation.")
             if len(qubits) == 2:
                 q_idx_1, q_idx_2 = [q.index for q in qubits]
-                gate_name = "%s_%d_%d" % (
-                    gate.name, q_idx_1, q_idx_2)
-                if gate_name not in gate_specs.keys():
-                    gate_specs[gate_name] = {
-                        "gate": gate.name, "qubits": [
-                            q_idx_1, q_idx_2]}
                 plane_idx = 0
                 write_success = False
                 while plane_idx < adj_tensor.shape[0]:
@@ -189,8 +178,8 @@ def generate_adjacency_tensor(
                         plane_idx += 1
                 if not write_success:
                     logging.warning("max # of planes in the adjacency tensor" +
-                                    f"have been exceeded. Initialize a larger" +
-                                    f"adjacency tensor to avoid truncation.")
+                                    "have been exceeded. Initialize a larger" +
+                                    "adjacency tensor to avoid truncation.")
 
     if not fixed_size:
         # get rid of planes in adj_tensor with all id gates
@@ -198,7 +187,7 @@ def generate_adjacency_tensor(
         adj_tensor = np.array(
             [adj_plane for adj_plane in adj_tensor
              if np.any(adj_plane != all_zeros)])
-    return adj_tensor, gate_specs
+    return adj_tensor
 
 
 def convert_to_prob_vector(
@@ -359,16 +348,21 @@ class UnitaryNoiseSampler(CircuitSampler):
     """
 
     def __init__(self,
+                 backend: Union[IBMQBackend, FakePulseBackend],
                  n_shots: int = 1024,
-                 noise_specs: NoiseSpec = unitary_noise_spec) -> None:
+                 noise_specs: NoiseSpec = unitary_noise_spec
+                 ) -> None:
         """initialization
 
         Args:
+            backend (Union[IBMQBackend, FakePulseBackend]): backend is only 
+            used to transpile the circuit and generate a circuit dag.
             n_shots (int, optional): # of shots. Defaults to 1024.
             noise_specs (NoiseSpec, optional): specs for the noise model.
             Defaults to unitary_noise_spec.
         """
         super().__init__(
+            backend=backend,
             n_shots=n_shots,
             noise_specs=noise_specs)
 
