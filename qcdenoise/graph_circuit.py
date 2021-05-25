@@ -1,3 +1,4 @@
+"""Module for constructing circuits from graph states"""
 import logging
 from typing import List, Union
 
@@ -26,15 +27,20 @@ class GraphCircuit:
 
     def __init__(self,
                  n_qubits: int = 3,
-                 gate_type: str = None) -> None:
+                 gate_type: str = None,
+                 stochastic: bool = True) -> None:
         """initialization is handled by this parent class
 
         Args:
             n_qubits (int, optional): # of qubits. Defaults to 3.
             gate_type ([type], optional): [description]. Defaults to None.
+            stochastic (bool, optional): stochastic addition of unitary
+            identity operator, which can later be processed into a Krauss
+            Operator to simulate a noisy channel. Defaults to True.
         """
         self.n_qubits = n_qubits
-        self.gate_type = None
+        self.stochastic = stochastic
+        self.gate_type = gate_type
         self.circuit = None
         self.graph_iter = []
 
@@ -69,16 +75,12 @@ class GraphCircuit:
 class CXGateCircuit(GraphCircuit):
     def build(
             self,
-            graph: Union[nx.Graph, nx.DiGraph],
-            stochastic: bool = True) -> Union[qk.QuantumCircuit, List]:
+            graph: Union[nx.Graph, nx.DiGraph]) -> Union[qk.QuantumCircuit, List]:
         """build a circuit from a graph state by assigning an H-CX-H gate
         sequence to each qubit and its neighbor
 
         Args:
             graph (Union[nx.Graph, nx.DiGraph]): graph state to use.
-            stochastic (bool, optional): stochastic addition of unitary
-            identity operator, which can later be processed into a Krauss
-            Operator to simulate a noisy channel. Defaults to True.
 
         Returns:
             qk.QuantumCircuit: quantum circuit
@@ -93,7 +95,7 @@ class CXGateCircuit(GraphCircuit):
             self.circuit.h(node)
             self.circuit.cx(node, ngbr)
             # insert custom unitary after controlled gate
-            if bool(np.random.choice(2)) and stochastic:
+            if bool(np.random.choice(2)) and self.stochastic:
                 label = f'unitary_{node}_{ngbr}'
                 ops_labels.append(label)
                 self.circuit.unitary(
@@ -105,16 +107,12 @@ class CXGateCircuit(GraphCircuit):
 
 class CZGateCircuit(GraphCircuit):
     def build(self,
-              graph: Union[nx.Graph, nx.DiGraph],
-              stochastic: bool = True) -> Union[qk.QuantumCircuit, List]:
+              graph: Union[nx.Graph, nx.DiGraph]) -> Union[qk.QuantumCircuit, List]:
         """build a circuit from a graph state by assigning an H-CZ-H gate
         sequence to each qubit and its neighbor.
 
         Args:
             graph (Union[nx.Graph, nx.DiGraph]): graph state to use.
-            stochastic (bool, optional): stochastic addition of unitary
-            identity operator, which can later be processed into a Krauss
-            Operator to simulate a noisy channel. Defaults to True.
 
         Returns:
             qk.QuantumCircuit: quantum circuit
@@ -129,7 +127,7 @@ class CZGateCircuit(GraphCircuit):
             self.circuit.h(node)
             self.circuit.cz(node, ngbr)
             # insert custom unitary after controlled gate
-            if bool(np.random.choice(2)) and stochastic:
+            if bool(np.random.choice(2)) and self.stochastic:
                 label = f'unitary_{node}_{ngbr}'
                 ops_labels.append(label)
                 self.circuit.unitary(
@@ -143,8 +141,7 @@ class CPhaseGateCircuit(GraphCircuit):
     def build(self,
               graph: Union[nx.Graph, nx.DiGraph],
               Lambda: float = np.pi,
-              Theta: float = np.pi / 2,
-              stochastic: bool = True) -> qk.QuantumCircuit:
+              Theta: float = np.pi / 2) -> qk.QuantumCircuit:
         """build a circuit from a graph state by assigning an Ry-CX-Ry-Cx gate
         sequence to each qubit and its neighbor.
 
@@ -154,9 +151,6 @@ class CPhaseGateCircuit(GraphCircuit):
             Defaults to np.pi.
             Theta_2 (float, optional): rotation angle for Ry.
             Defaults to np.pi/2.
-            stochastic (bool, optional): stochastic addition of unitary
-            identity operator, which can later be processed into a Krauss
-            Operator to simulate a noisy channel. Defaults to True.
 
         Returns:
             qk.QuantumCircuit: quantum circuit
@@ -168,7 +162,7 @@ class CPhaseGateCircuit(GraphCircuit):
         for node, ngbr in self.graph_iter:
             self.circuit.ry(Lambda / 2, ngbr)
             self.circuit.cx(node, ngbr)
-            if bool(np.random.choice(2)) and stochastic:
+            if bool(np.random.choice(2)) and self.stochastic:
                 label = f'unitary_{node}_{ngbr}'
                 self.ops_labels.append(label)
                 self.circuit.unitary(
@@ -176,7 +170,7 @@ class CPhaseGateCircuit(GraphCircuit):
                         node, ngbr], label=label)
             self.circuit.ry(-Theta / 2, ngbr)
             self.circuit.cx(node, ngbr)
-            if bool(np.random.choice(2)) and stochastic:
+            if bool(np.random.choice(2)) and self.stochastic:
                 label = f'unitary_{node}_{ngbr}'
                 ops_labels.append(label)
                 self.circuit.unitary(

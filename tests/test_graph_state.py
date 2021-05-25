@@ -1,5 +1,6 @@
+"""Testing Graph state generation
+"""
 import pytest
-
 import qcdenoise as qcd
 
 

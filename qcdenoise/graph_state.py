@@ -1,3 +1,5 @@
+"""Module for generating random graph states from a graph database
+"""
 import logging
 import random
 from typing import Union
@@ -51,7 +53,7 @@ class GraphState:
     def __init__(self, graph_db: GraphDB,
                  n_qubits: int = 5,
                  min_num_edges: int = 2,
-                 max_num_edges: int = 3,
+                 max_num_edges: int = 7,
                  directed: bool = False) -> None:
         """initialize
 
@@ -164,15 +166,20 @@ class GraphState:
         """
         combs = list(
             set(partitions(self.n_qubits, start=self.smallest_subgraph)))
-        for (itm, comb) in enumerate(combs):
-            if any([itm > self.largest_subgraph for itm in comb]):
-                combs.pop(itm)
+        valid_combs = []
         if len(combs) == 0:
             raise ValueError(
                 "Empty list of subgraph combinations." +
                 "Circuit cannot be constructed as specified.")
-        logger.debug(f"# of subgraphs combinations {len(combs)}")
-        return combs
+        for comb in combs:
+            cond_bigger = all(
+                [itm <= self.largest_subgraph for itm in comb])
+            cond_smaller = all(
+                [itm >= self.smallest_subgraph for itm in comb])
+            if cond_smaller and cond_bigger:
+                valid_combs.append(comb)
+        logger.debug(f"subgraphs combinations {valid_combs}")
+        return valid_combs
 
     def combine_subgraphs(
             self, sub_graphs: list) -> Union[nx.Graph, nx.DiGraph]:

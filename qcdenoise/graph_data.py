@@ -1,8 +1,5 @@
-__all__ = [
-    "GraphData",
-    "HeinGraphData",
-    "partition_GraphData",
-    "GraphDB"]
+"""module for graph data and graph database
+"""
 import logging
 import math
 import random
@@ -15,6 +12,12 @@ from .config import _plots, nx_plot_options
 
 if _plots:
     import matplotlib.pyplot as plt
+
+__all__ = [
+    "GraphData",
+    "HeinGraphData",
+    "partition_GraphData",
+    "GraphDB"]
 
 # module logger
 logger = logging.getLogger(__name__)

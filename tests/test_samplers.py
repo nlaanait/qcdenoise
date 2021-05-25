@@ -1,3 +1,5 @@
+"""Testing Circuit samplers
+"""
 import os
 from datetime import datetime
 
@@ -30,11 +32,22 @@ def get_hardware_backend(n_qubits):
 
 
 @pytest.fixture()
-def get_circuit_sim_dict(n_qubits):
+def get_circuit_device_dict(n_qubits):
     graph_db = qcd.GraphDB()
     graph_state = qcd.GraphState(graph_db=graph_db, n_qubits=n_qubits)
     state = graph_state.sample()
-    circ_builder = qcd.CXGateCircuit(n_qubits=n_qubits)
+    circ_builder = qcd.CXGateCircuit(
+        n_qubits=n_qubits, stochastic=False)
+    return circ_builder.build(state)
+
+
+@pytest.fixture()
+def get_circuit_unitary_dict(n_qubits):
+    graph_db = qcd.GraphDB()
+    graph_state = qcd.GraphState(graph_db=graph_db, n_qubits=n_qubits)
+    state = graph_state.sample()
+    circ_builder = qcd.CXGateCircuit(
+        n_qubits=n_qubits, stochastic=True)
     return circ_builder.build(state)
 
 
@@ -43,14 +56,16 @@ def get_circuit_hw_dict(n_qubits):
     graph_db = qcd.GraphDB()
     graph_state = qcd.GraphState(graph_db=graph_db, n_qubits=n_qubits)
     state = graph_state.sample()
-    circ_builder = qcd.CXGateCircuit(n_qubits=n_qubits)
-    return circ_builder.build(state, stochastic=False)
+    circ_builder = qcd.CXGateCircuit(
+        n_qubits=n_qubits, stochastic=False)
+    return circ_builder.build(state)
 
 
 @pytest.mark.dependency()
-def test_UnitaryNoiseSampler(get_circuit_sim_dict):
-    circuit_dict = get_circuit_sim_dict
+def test_UnitaryNoiseSampler(get_circuit_unitary_dict):
+    circuit_dict = get_circuit_unitary_dict
     sampler = qcd.UnitaryNoiseSampler(
+        backend=FakeMontreal(),
         noise_specs=qcd.unitary_noise_spec)
     try:
         sampler.sample(
@@ -62,8 +77,8 @@ def test_UnitaryNoiseSampler(get_circuit_sim_dict):
 
 
 @pytest.mark.dependency()
-def test_DeviceNoiseSampler(get_circuit_sim_dict):
-    circuit_dict = get_circuit_sim_dict
+def test_DeviceNoiseSampler(get_circuit_device_dict):
+    circuit_dict = get_circuit_device_dict
     sampler = qcd.DeviceNoiseSampler(
         backend=FakeMontreal(),
         noise_specs=qcd.device_noise_spec)
