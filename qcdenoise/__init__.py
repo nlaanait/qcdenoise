@@ -7,6 +7,7 @@ from .ml_models import *
 from .graph_data import *
 from .graph_state import *
 from .graph_circuit import *
+from .simulate import *
 from .config import *
 
 __version__ = "0.0.1"

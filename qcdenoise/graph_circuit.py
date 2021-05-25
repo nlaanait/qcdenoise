@@ -1,3 +1,4 @@
+"""Module for constructing circuits from graph states"""
 import logging
 from typing import List, Union
 

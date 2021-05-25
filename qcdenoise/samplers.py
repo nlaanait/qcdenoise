@@ -1,3 +1,6 @@
+"""Module of various graph state-based circuit samplers on simulators and
+hardware
+"""
 import datetime
 import io
 import logging
@@ -19,7 +22,9 @@ __all__ = ["UnitaryNoiseSampler",
            "unitary_noise_spec",
            "DeviceNoiseSampler",
            "device_noise_spec",
-           "HardwareSampler"]
+           "HardwareSampler",
+           "generate_adjacency_tensor",
+           "encode_basis_gates"]
 
 # module logger
 logger = logging.getLogger(__name__)
@@ -111,18 +116,22 @@ def get_backendProp(backend_dict: dict) -> BackendProperties:
     return backendProp
 
 
+def encode_basis_gates(basis_gates: list) -> dict:
+    return {gate: num for num, gate in enumerate(basis_gates)}
+
+
 def generate_adjacency_tensor(
         dag: qk.dagcircuit.DAGCircuit,
-        adj_tensor_dim: tuple = (32, 32, 32),
-        encoding: dict = None,
+        encoding: dict,
+        tensor_shape: tuple = (32, 32, 32),
         fixed_size: bool = True,
-        undirected: bool = True) -> Tuple[np.ndarray, dict]:
+        directed: bool = False) -> np.ndarray:
     """Generate an adjacency tensor representation of a circuit
 
     Args:
         dag (qk.dagcircuit.DAGCircuit) : directed acyclic graph returned by
         qiskit's transpiler
-        adj_tensor_dim (tuple) : dimensions of the adjacency tensor
+        tensor_shape (tuple) : dimensions of the adjacency tensor
         (# of planes, # of qubits, # of qubits)
 
     Keyword Args:
@@ -132,15 +141,12 @@ def generate_adjacency_tensor(
         for an undirected or directed graph.
 
     Returns:
-        (tuple) -- (adjacency tensor, gate_specs)
+        (np.ndarray) : adjacency tensor
     """
     assert isinstance(
-        dag, qk.dagcircuit.DAGCircuit), \
-        logging.error(
-            "dag must be an instance of qiskit.dagcircuit.dagcircuit")
-    adj_tensor = np.zeros(adj_tensor_dim)
-    encoding = encoding if encoding else {
-        'id': 0, 'cx': 1, 'u1': 2, 'u2': 3, 'u3': 4}
+        dag, qk.dagcircuit.DAGCircuit), logger.error(
+        "dag must be an instance of qiskit.dagcircuit.dagcircuit")
+    adj_tensor = np.zeros(tensor_shape)
     for gate in dag.gate_nodes():
         qubits = gate.qargs
         if qubits:
@@ -157,9 +163,9 @@ def generate_adjacency_tensor(
                     else:
                         plane_idx += 1
                 if not write_success:
-                    logging.warning("max # of planes in the adjacency tensor" +
-                                    "have been exceeded. Initialize a larger" +
-                                    "adjacency tensor to avoid truncation.")
+                    logger.warning("max # of planes in the adjacency tensor" +
+                                   "have been exceeded. Initialize a larger" +
+                                   "adjacency tensor to avoid truncation.")
             if len(qubits) == 2:
                 q_idx_1, q_idx_2 = [q.index for q in qubits]
                 plane_idx = 0
@@ -169,7 +175,7 @@ def generate_adjacency_tensor(
                                   q_idx_1, q_idx_2] == 0:
                         adj_tensor[plane_idx, q_idx_1,
                                    q_idx_2] = encoding[gate.name]
-                        if undirected:
+                        if not directed:
                             adj_tensor[plane_idx, q_idx_2,
                                        q_idx_1] = encoding[gate.name]
                         write_success = True
@@ -177,9 +183,9 @@ def generate_adjacency_tensor(
                     else:
                         plane_idx += 1
                 if not write_success:
-                    logging.warning("max # of planes in the adjacency tensor" +
-                                    "have been exceeded. Initialize a larger" +
-                                    "adjacency tensor to avoid truncation.")
+                    logger.warning("max # of planes in the adjacency tensor" +
+                                   "have been exceeded. Initialize a larger" +
+                                   "adjacency tensor to avoid truncation.")
 
     if not fixed_size:
         # get rid of planes in adj_tensor with all id gates
@@ -355,7 +361,7 @@ class UnitaryNoiseSampler(CircuitSampler):
         """initialization
 
         Args:
-            backend (Union[IBMQBackend, FakePulseBackend]): backend is only 
+            backend (Union[IBMQBackend, FakePulseBackend]): backend is only
             used to transpile the circuit and generate a circuit dag.
             n_shots (int, optional): # of shots. Defaults to 1024.
             noise_specs (NoiseSpec, optional): specs for the noise model.
