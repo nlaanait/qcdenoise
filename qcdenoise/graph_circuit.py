@@ -3,7 +3,6 @@ import logging
 from typing import List, Union
 
 import networkx as nx
-from networkx.classes.digraph import DiGraph
 import qiskit as qk
 import numpy as np
 from qiskit.quantum_info.operators import Operator
@@ -91,7 +90,6 @@ class CXGateCircuit(GraphCircuit):
         unitary_op = Operator(np.identity(4))
         self.circuit.h(range(self.n_qubits))
         for node, ngbr in self.graph_iter:
-            # for ngbr, _ in ngbrs.items():
             self.circuit.h(node)
             self.circuit.cx(node, ngbr)
             # insert custom unitary after controlled gate
@@ -102,7 +100,7 @@ class CXGateCircuit(GraphCircuit):
                     unitary_op, [
                         node, ngbr], label=label)
             self.circuit.h(node)
-        return {"circuit": self.circuit, "ops": ops_labels}
+        return {"circuit": self.circuit.copy(), "ops": ops_labels}
 
 
 class CZGateCircuit(GraphCircuit):
@@ -123,7 +121,6 @@ class CZGateCircuit(GraphCircuit):
         self.circuit.h(range(self.n_qubits))
         ops_labels = []
         for node, ngbr in self.graph_iter:
-            # for ngbr, _ in ngbrs.items():
             self.circuit.h(node)
             self.circuit.cz(node, ngbr)
             # insert custom unitary after controlled gate
@@ -134,7 +131,7 @@ class CZGateCircuit(GraphCircuit):
                     unitary_op, [
                         node, ngbr], label=label)
             self.circuit.h(node)
-        return {"circuit": self.circuit, "ops": ops_labels}
+        return {"circuit": self.circuit.copy(), "ops": ops_labels}
 
 
 class CPhaseGateCircuit(GraphCircuit):
@@ -177,4 +174,4 @@ class CPhaseGateCircuit(GraphCircuit):
                     unitary_op, [
                         node, ngbr], label=label)
             self.circuit.ry(Lambda / 2, ngbr)
-        return {"circuit": self.circuit, "ops": ops_labels}
+        return {"circuit": self.circuit.copy(), "ops": ops_labels}

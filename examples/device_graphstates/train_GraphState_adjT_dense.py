@@ -11,7 +11,7 @@ from datetime import datetime
 
 # qcdenoise imports
 from qcdenoise import DenseModel, AdjTModel, AdjTAsymModel 
-from qcdenoise.io_utils import QCIRCDataSet
+from qcdenoise.io_utils import QCIRCDataset
 from qcdenoise.ml_utils import train, test
 
 np.random.seed(1234)
@@ -24,8 +24,8 @@ data_path =  '/data/MLQC/GraphState_nqbits9_DeviceNoise_041420'
 #data_path='/data/MLQC/GraphState_nqbits5_DeviceNoise_042120/'
 n_qbits = 9
 noise_id = "Device"
-traindata = QCIRCDataSet('%s/train.lmdb' % data_path, pads=(0,32-n_qbits, 0, 32-n_qbits), debug=False)
-testdata = QCIRCDataSet('%s/dev.lmdb' % data_path, pads=(0, 32-n_qbits, 0, 32-n_qbits), debug=False)
+traindata = QCIRCDataset('%s/train.lmdb' % data_path, pads=(0,32-n_qbits, 0, 32-n_qbits), debug=False)
+testdata = QCIRCDataset('%s/dev.lmdb' % data_path, pads=(0, 32-n_qbits, 0, 32-n_qbits), debug=False)
 print('Total # of samples in train set: {}, test set:{}'.format(len(traindata), len(testdata)))
 batch_size=64
 trainloader = DataLoader(traindata, batch_size=batch_size, shuffle=True, pin_memory=True, drop_last=True)
@@ -118,7 +118,7 @@ net = AdjTAsymModel(inputs_dim=inputs_dim, targets_dim=targets_dim, encodings_di
 net.load_state_dict(torch.load(model_path))
 
 
-testdata = QCIRCDataSet('%s/test.lmdb' % data_path, debug=False)
+testdata = QCIRCDataset('%s/test.lmdb' % data_path, debug=False)
 print('Total # of samples in train set: {}, test set:{}'.format(len(traindata), len(testdata)))
 trainloader = DataLoader(traindata, batch_size=64, shuffle=True, pin_memory=True, drop_last=True)
 

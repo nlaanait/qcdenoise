@@ -70,6 +70,14 @@ class GraphData:
 
 
 # Graph data from Hein et al. arXiv:060296.
+# @article{undefined,
+# year = {2006},
+# title = {{Entanglement in Graph States and its Applications}},
+# author = {Hein, M and Dür, W and Eisert, J and Raussendorf, R and Nest, M Van den and Briegel, H -J},
+# journal = {arXiv},
+# eprint = {quant-ph/0602096},
+# keywords = {},
+# }
 # The keys correspond to the graph numbers in Table V
 HeinGraphData = GraphData(data={'1': [(1, 2, 1.0)],
                                 '2': [(1, 2, 1.0), (1, 3, 1.0)],
