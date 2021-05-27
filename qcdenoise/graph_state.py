@@ -1,6 +1,5 @@
 """Module for generating random graph states from a graph database
 """
-import logging
 import random
 from typing import Union
 
@@ -10,7 +9,7 @@ from networkx.algorithms.approximation import vertex_cover
 
 
 from .graph_data import GraphDB
-from .config import _plots, nx_plot_options
+from .config import _plots, nx_plot_options, get_module_logger
 
 __all__ = ["GraphState"]
 
@@ -18,14 +17,7 @@ if _plots:
     import matplotlib.pyplot as plt
 
 # module logger
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    f"{__name__}- %(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-)
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = get_module_logger(__name__)
 
 
 def partitions(n, start=2):

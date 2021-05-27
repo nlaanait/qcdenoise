@@ -1,6 +1,5 @@
 """module for graph data and graph database
 """
-import logging
 import math
 import random
 from dataclasses import dataclass
@@ -8,7 +7,7 @@ from typing import Any, Dict, List, Tuple
 
 import networkx as nx
 
-from .config import _plots, nx_plot_options
+from .config import _plots, nx_plot_options, get_module_logger
 
 if _plots:
     import matplotlib.pyplot as plt
@@ -20,14 +19,7 @@ __all__ = [
     "GraphDB"]
 
 # module logger
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    f"{__name__}- %(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-)
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = get_module_logger(__name__)
 
 
 def offset(edge_list: list) -> list:

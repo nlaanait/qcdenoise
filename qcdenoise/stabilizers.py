@@ -1,29 +1,28 @@
 from copy import deepcopy
-import logging
-from operator import ge
-from typing import Union, Dict, List
+from typing import Dict, List, Union, OrderedDict
 
-import numpy as np
+from collections import OrderedDict
 import networkx as nx
+import numpy as np
+import qiskit as qk
+from qiskit import QuantumCircuit
+from qiskit.providers.ibmq import IBMQBackend
+from qiskit.qobj import Qobj
+from qiskit.test.mock.fake_pulse_backend import FakePulseBackend
+from qiskit.tools.monitor.job_monitor import job_monitor
 from sympy import I
 from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
-from qiskit import QuantumCircuit
-import qiskit as qk
+
+from .config import get_module_logger
+from .samplers import CircuitSampler, NoiseSpec
 
 __all__ = ["TothStabilizer", "JungStabilizer"]
 
 # module logger
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    f"{__name__}- %(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-)
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = get_module_logger(__name__)
+
 
 # various helper functions
-
 
 def get_unique_operators(stabilizers: list) -> list:
     """ strip leading sign +/- from stabilizer strings """
@@ -121,10 +120,12 @@ class StabilizerCircuit:
         raise NotImplementedError
 
     def build(self, drop_coef: bool = True, **
-              kwargs) -> Dict[str, QuantumCircuit]:
+              kwargs) -> OrderedDict[str, QuantumCircuit]:
         _ = self.find_stabilizers(**kwargs)
         unique_stabilizers = get_unique_operators(self.stabilizers)
         output = {sdx: None for sdx in unique_stabilizers}
+        output = OrderedDict(
+            {sdx: None for sdx in unique_stabilizers})
         for sdx in unique_stabilizers:
             q_reg = qk.QuantumRegister(self.n_qubits)
             circ = qk.QuantumCircuit(q_reg, name=sdx)
@@ -207,3 +208,52 @@ class JungStabilizer(StabilizerCircuit):
 
     def build(self, noise_robust: int = 0):
         return super().build(noise_robust=noise_robust)
+
+
+class StabilizerSampler(CircuitSampler):
+    def __init__(self, backend: Union[IBMQBackend, FakePulseBackend],
+                 n_shots: int) -> None:
+        super().__init__(
+            backend=backend,
+            n_shots=n_shots)
+
+    def sample(self, stabilizer_circuits: Dict[str, QuantumCircuit],
+               graph_circuit: QuantumCircuit, execute: bool = True):
+
+        # concatenate graph_circuit and stabilizer_circuits
+        circuits = []
+        for name, stab_circuit in stabilizer_circuits.items():
+            circ = graph_circuit.copy()
+            stab_circuit.to_gate(label=name)
+            circ.append(stab_circuit)
+            circ.measure_all()
+            circuits.append(circ)
+
+        # transpile circuits
+        self.transpile_circuit(circuits, {})
+
+        results = {"counts": None, "cx_counts": None}
+        if isinstance(self.backend, IBMQBackend):
+            qjob_dict = self.execute_circuit(
+                circuit=circuits, execute=execute)
+            if execute:
+                job_monitor(qjob_dict["job"], interval=5)
+            results["counts"] = qjob_dict["job"].result().get_counts()
+            results["cx_counts"] = self.count_cx_gates(
+                stabilizer_circuits, qjob_dict["qobj"])
+        else:
+            results["counts"] = self.simulate_circuit(circuits)
+        return results
+
+    @staticmethod
+    def count_cx_gates(stabilizer_circuits: Dict[str, QuantumCircuit],
+                       q_obj: Qobj) -> Dict[str, int]:
+        cx_counts = {}
+        q_dict = q_obj.to_dict()
+        for idx, circ_name in enumerate(stabilizer_circuits.keys()):
+            cx_counter = 0
+            instr = q_dict['experiments'][idx]['instructions']
+            for gate in instr:
+                if gate['name'] == 'cx':
+                    cx_counter += 1
+            cx_counts[circ_name] = cx_counter

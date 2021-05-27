@@ -1,9 +1,7 @@
 """Module for generating and simulating graph state-based circuits
 """
-import logging
-from copy import deepcopy
 from dataclasses import asdict, dataclass
-from typing import Dict, Tuple, Union
+from typing import Dict, Union
 
 import numpy as np
 from qiskit.circuit.quantumcircuit import QuantumCircuit
@@ -17,6 +15,7 @@ from .graph_state import GraphState
 from .samplers import (CircuitSampler, DeviceNoiseSampler, HardwareSampler,
                        NoiseSpec, UnitaryNoiseSampler, encode_basis_gates,
                        generate_adjacency_tensor, unitary_noise_spec)
+from .config import get_module_logger
 
 __all__ = [
     "GraphSpecs",
@@ -30,14 +29,7 @@ __all__ = [
 
 
 # module logger
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    f"{__name__}- %(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-)
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = get_module_logger(__name__)
 
 
 @dataclass(init=True)
@@ -166,7 +158,7 @@ def circuit_sampling_op(graph_state: GraphState,
         sampler_specs (SamplingSpecs): sampling specifications
 
     Returns:
-        Dict: `{"prob_vector": probability vector, 
+        Dict: `{"prob_vector": probability vector,
         "graph": nx.Graph used, "circuit": sampled quantum circuit}`
     """
     graph = graph_state.sample(

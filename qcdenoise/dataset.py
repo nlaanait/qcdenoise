@@ -7,6 +7,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from .config import get_module_logger
+
 __all__ = [
     "pool_shuffle_split",
     "prob_adjT_to_lmdb",
@@ -14,6 +16,8 @@ __all__ = [
     "QCIRCDatasetMulti",
     "QCIRCDatasetNumpy"]
 
+# module logger
+logger = get_module_logger(__name__)
 
 def pool_shuffle_split(files_dir, file_expr,
                        mode='train', split=0.8, delete=True):

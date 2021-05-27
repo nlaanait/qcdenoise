@@ -62,45 +62,46 @@ def get_circuit_hw_dict(n_qubits):
 
 
 @pytest.mark.dependency()
-def test_UnitaryNoiseSampler(get_circuit_unitary_dict):
+def test_UnitaryNoiseSampler(get_circuit_unitary_dict, n_qubits):
     circuit_dict = get_circuit_unitary_dict
     sampler = qcd.UnitaryNoiseSampler(
         backend=FakeMontreal(),
         noise_specs=qcd.unitary_noise_spec)
     try:
-        sampler.sample(
+        prob_vec = sampler.sample(
             circuit_dict["circuit"],
             circuit_dict["ops"])
-        assert True
+        assert prob_vec.shape == (2**n_qubits,)
     except BaseException:
         pytest.fail()
 
 
 @pytest.mark.dependency()
-def test_DeviceNoiseSampler(get_circuit_device_dict):
+def test_DeviceNoiseSampler(get_circuit_device_dict, n_qubits):
     circuit_dict = get_circuit_device_dict
     sampler = qcd.DeviceNoiseSampler(
         backend=FakeMontreal(),
         noise_specs=qcd.device_noise_spec)
     try:
-        sampler.sample(
+        prob_vec = sampler.sample(
             circuit_dict["circuit"])
-        assert True
+        assert prob_vec.shape == (2**n_qubits,)
     except BaseException:
         pytest.fail()
 
 
-@pytest.mark.dependency()
-def test_HardwareSampler(get_circuit_hw_dict, get_hardware_backend):
-    circuit_dict = get_circuit_hw_dict
-    sampler = qcd.HardwareSampler(get_hardware_backend, n_shots=1024)
-    timestamp = datetime.now()
-    job_name = f"qcdenoise-test-{timestamp}"
-    try:
-        sampler.sample(
-            circuit_dict["circuit"],
-            execute=True,
-            job_name=job_name)
-        assert True
-    except BaseException:
-        pytest.fail()
+# @pytest.mark.dependency()
+# def test_HardwareSampler(
+#         get_circuit_hw_dict, get_hardware_backend, n_qubits):
+#     circuit_dict = get_circuit_hw_dict
+#     sampler = qcd.HardwareSampler(get_hardware_backend, n_shots=1024)
+#     timestamp = datetime.now()
+#     job_name = f"qcdenoise-test-{timestamp}"
+#     try:
+#         prob_vec = sampler.sample(
+#             circuit_dict["circuit"],
+#             execute=True,
+#             job_name=job_name)
+#         assert prob_vec.shape == (2**n_qubits,)
+#     except BaseException:
+#         pytest.fail()

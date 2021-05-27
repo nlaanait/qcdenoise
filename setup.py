@@ -9,10 +9,16 @@ setup(
     author='Numan Laanait',
     author_email='nlaanait@gmail.com',
     description='',
-    install_requires=['numpy', 'qiskit', 'torch', 'lmdb'],
+    install_requires=[
+        'numpy',
+        'qiskit',
+        'torch',
+        'lmdb',
+        'pytest',
+        'pytorch-lightning'],
     # test_suite='tests',
     python_requires='>=3.6',
-    package_dir = {'qcdenoise': 'qcdenoise'},
-    package_data = {'qcdenoise': ['data']},
+    package_dir={'qcdenoise': 'qcdenoise'},
+    package_data={'qcdenoise': ['data']},
     include_package_data=True
 )

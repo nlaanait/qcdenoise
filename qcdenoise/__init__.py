@@ -7,6 +7,7 @@ from .graph_circuit import *
 from .stabilizers import *
 from .simulate import *
 from .config import *
+from .witnesses import *
 
 __version__ = "0.0.1"
 

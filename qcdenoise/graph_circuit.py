@@ -1,5 +1,4 @@
 """Module for constructing circuits from graph states"""
-import logging
 from typing import List, Union
 
 import networkx as nx
@@ -7,17 +6,12 @@ import qiskit as qk
 import numpy as np
 from qiskit.quantum_info.operators import Operator
 
+from .config import get_module_logger
+
 __all__ = ["CXGateCircuit", "CZGateCircuit", "CPhaseGateCircuit"]
 
 # module logger
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    f"{__name__}- %(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-)
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = get_module_logger(__name__)
 
 
 class GraphCircuit:
