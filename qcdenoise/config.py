@@ -1,15 +1,22 @@
 import logging
-__all__ = ["_plots", "nx_plot_options"]
+__all__ = ["_plots", "nx_plot_options", "get_module_logger"]
+
+
+def get_module_logger(name: str) -> logging.Logger:
+    logger = logging.getLogger(name)
+    formatter = logging.Formatter(
+        f"{name}- %(asctime)s - %(levelname)s - %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+    )
+    ch = logging.StreamHandler()
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
+
 
 # module logger
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    "dataset- %(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-)
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = get_module_logger(__name__)
+
 
 # set plotting flag
 global _plots, nx_plot_options

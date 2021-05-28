@@ -3,7 +3,6 @@ hardware
 """
 import datetime
 import io
-import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Tuple, Union
@@ -18,6 +17,8 @@ from qiskit.providers.aer.noise import NoiseModel, errors
 from qiskit.providers.models.backendproperties import (BackendProperties, Gate,
                                                        Nduv)
 
+from .config import get_module_logger
+
 __all__ = ["UnitaryNoiseSampler",
            "unitary_noise_spec",
            "DeviceNoiseSampler",
@@ -27,14 +28,7 @@ __all__ = ["UnitaryNoiseSampler",
            "encode_basis_gates"]
 
 # module logger
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    f"{__name__}- %(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-)
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = get_module_logger(__name__)
 
 
 # various helper functions
@@ -315,10 +309,11 @@ class CircuitSampler:
                          noise_model=self.noise_model,
                          shots=self.n_shots)
         result = job.result()
-        return result.get_counts(0)
+        return result.get_counts()
 
     def transpile_circuit(
-            self, circuit: qk.QuantumCircuit, transpile_kwargs: Dict):
+            self, circuit: Union[List[qk.QuantumCircuit], qk.QuantumCircuit],
+            transpile_kwargs: Dict):
         logger.info(
             "Transpiling circuit and generating the circuit DAG")
 
@@ -333,8 +328,12 @@ class CircuitSampler:
             dag = kwargs['dag']
             return dag
 
+        if type(circuit) == list:
+            circuit = [circ.decompose() for circ in circuit]
+        else:
+            circuit.decompose()
         self.transpiled_circuit = qk.transpile(
-            circuit.decompose(), callback=get_dag, backend=self.backend,
+            circuit, callback=get_dag, backend=self.backend,
             **transpile_kwargs)
         self.circuit_dag = dag
 

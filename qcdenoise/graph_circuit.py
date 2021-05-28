@@ -1,24 +1,17 @@
 """Module for constructing circuits from graph states"""
-import logging
-from typing import List, Union
+from typing import List, Union, Dict
 
 import networkx as nx
-from networkx.classes.digraph import DiGraph
 import qiskit as qk
 import numpy as np
 from qiskit.quantum_info.operators import Operator
 
+from .config import get_module_logger
+
 __all__ = ["CXGateCircuit", "CZGateCircuit", "CPhaseGateCircuit"]
 
 # module logger
-logger = logging.getLogger(__name__)
-formatter = logging.Formatter(
-    f"{__name__}- %(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%m/%d/%Y %H:%M:%S",
-)
-ch = logging.StreamHandler()
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = get_module_logger(__name__)
 
 
 class GraphCircuit:
@@ -75,7 +68,7 @@ class GraphCircuit:
 class CXGateCircuit(GraphCircuit):
     def build(
             self,
-            graph: Union[nx.Graph, nx.DiGraph]) -> Union[qk.QuantumCircuit, List]:
+            graph: Union[nx.Graph, nx.DiGraph]) -> Dict[str, qk.QuantumCircuit]:
         """build a circuit from a graph state by assigning an H-CX-H gate
         sequence to each qubit and its neighbor
 
@@ -91,7 +84,6 @@ class CXGateCircuit(GraphCircuit):
         unitary_op = Operator(np.identity(4))
         self.circuit.h(range(self.n_qubits))
         for node, ngbr in self.graph_iter:
-            # for ngbr, _ in ngbrs.items():
             self.circuit.h(node)
             self.circuit.cx(node, ngbr)
             # insert custom unitary after controlled gate
@@ -102,7 +94,7 @@ class CXGateCircuit(GraphCircuit):
                     unitary_op, [
                         node, ngbr], label=label)
             self.circuit.h(node)
-        return {"circuit": self.circuit, "ops": ops_labels}
+        return {"circuit": self.circuit.copy(), "ops": ops_labels}
 
 
 class CZGateCircuit(GraphCircuit):
@@ -123,7 +115,6 @@ class CZGateCircuit(GraphCircuit):
         self.circuit.h(range(self.n_qubits))
         ops_labels = []
         for node, ngbr in self.graph_iter:
-            # for ngbr, _ in ngbrs.items():
             self.circuit.h(node)
             self.circuit.cz(node, ngbr)
             # insert custom unitary after controlled gate
@@ -134,7 +125,7 @@ class CZGateCircuit(GraphCircuit):
                     unitary_op, [
                         node, ngbr], label=label)
             self.circuit.h(node)
-        return {"circuit": self.circuit, "ops": ops_labels}
+        return {"circuit": self.circuit.copy(), "ops": ops_labels}
 
 
 class CPhaseGateCircuit(GraphCircuit):
@@ -177,4 +168,4 @@ class CPhaseGateCircuit(GraphCircuit):
                     unitary_op, [
                         node, ngbr], label=label)
             self.circuit.ry(Lambda / 2, ngbr)
-        return {"circuit": self.circuit, "ops": ops_labels}
+        return {"circuit": self.circuit.copy(), "ops": ops_labels}
