@@ -1,5 +1,5 @@
 """Module for constructing circuits from graph states"""
-from typing import List, Union
+from typing import List, Union, Dict
 
 import networkx as nx
 import qiskit as qk
@@ -68,7 +68,7 @@ class GraphCircuit:
 class CXGateCircuit(GraphCircuit):
     def build(
             self,
-            graph: Union[nx.Graph, nx.DiGraph]) -> Union[qk.QuantumCircuit, List]:
+            graph: Union[nx.Graph, nx.DiGraph]) -> Dict[str, qk.QuantumCircuit]:
         """build a circuit from a graph state by assigning an H-CX-H gate
         sequence to each qubit and its neighbor
 

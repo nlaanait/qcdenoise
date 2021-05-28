@@ -312,7 +312,8 @@ class CircuitSampler:
         return result.get_counts()
 
     def transpile_circuit(
-            self, circuit: qk.QuantumCircuit, transpile_kwargs: Dict):
+            self, circuit: Union[List[qk.QuantumCircuit], qk.QuantumCircuit],
+            transpile_kwargs: Dict):
         logger.info(
             "Transpiling circuit and generating the circuit DAG")
 
@@ -327,8 +328,12 @@ class CircuitSampler:
             dag = kwargs['dag']
             return dag
 
+        if type(circuit) == list:
+            circuit = [circ.decompose() for circ in circuit]
+        else:
+            circuit.decompose()
         self.transpiled_circuit = qk.transpile(
-            circuit.decompose(), callback=get_dag, backend=self.backend,
+            circuit, callback=get_dag, backend=self.backend,
             **transpile_kwargs)
         self.circuit_dag = dag
 

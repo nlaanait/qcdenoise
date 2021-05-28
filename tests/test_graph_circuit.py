@@ -1,6 +1,5 @@
 """Testing GraphCircuits
 """
-from qcdenoise.graph_circuit import CXGateCircuit
 import pytest
 import qcdenoise as qcd
 
@@ -14,7 +13,7 @@ def graph_state():
 
 @pytest.mark.dependency()
 def test_CXGateCircuit(graph_state):
-    circ_builder = CXGateCircuit(n_qubits=7)
+    circ_builder = qcd.CXGateCircuit(n_qubits=7)
     circ = circ_builder.build(graph_state)
     if circ:
         assert True
@@ -22,7 +21,7 @@ def test_CXGateCircuit(graph_state):
 
 @pytest.mark.dependency()
 def test_CZGateCircuit(graph_state):
-    circ_builder = CXGateCircuit(n_qubits=7)
+    circ_builder = qcd.CZGateCircuit(n_qubits=7)
     circ = circ_builder.build(graph_state)
     if circ:
         assert True
@@ -30,7 +29,7 @@ def test_CZGateCircuit(graph_state):
 
 @pytest.mark.dependency()
 def test_CPhaseGateCircuit(graph_state):
-    circ_builder = CXGateCircuit(n_qubits=7)
+    circ_builder = qcd.CPhaseGateCircuit(n_qubits=7)
     circ = circ_builder.build(graph_state)
     if circ:
         assert True

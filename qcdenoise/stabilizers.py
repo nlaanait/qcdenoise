@@ -1,5 +1,6 @@
 from copy import deepcopy
-from typing import Dict, List, Union, OrderedDict
+from typing import Dict, List, Union
+from typing import OrderedDict as OrderedDictType
 
 from collections import OrderedDict
 import networkx as nx
@@ -8,6 +9,7 @@ import qiskit as qk
 from qiskit import QuantumCircuit
 from qiskit.providers.ibmq import IBMQBackend
 from qiskit.qobj import Qobj
+from qiskit.result.counts import Counts
 from qiskit.test.mock.fake_pulse_backend import FakePulseBackend
 from qiskit.tools.monitor.job_monitor import job_monitor
 from sympy import I
@@ -16,7 +18,7 @@ from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
 from .config import get_module_logger
 from .samplers import CircuitSampler, NoiseSpec
 
-__all__ = ["TothStabilizer", "JungStabilizer"]
+__all__ = ["TothStabilizer", "JungStabilizer", "StabilizerSampler"]
 
 # module logger
 logger = get_module_logger(__name__)
@@ -120,7 +122,7 @@ class StabilizerCircuit:
         raise NotImplementedError
 
     def build(self, drop_coef: bool = True, **
-              kwargs) -> OrderedDict[str, QuantumCircuit]:
+              kwargs) -> OrderedDictType[str, QuantumCircuit]:
         _ = self.find_stabilizers(**kwargs)
         unique_stabilizers = get_unique_operators(self.stabilizers)
         output = {sdx: None for sdx in unique_stabilizers}
@@ -218,42 +220,43 @@ class StabilizerSampler(CircuitSampler):
             n_shots=n_shots)
 
     def sample(self, stabilizer_circuits: Dict[str, QuantumCircuit],
-               graph_circuit: QuantumCircuit, execute: bool = True):
+               graph_circuit: QuantumCircuit,
+               execute: bool = True) -> List[Counts]:
 
+        assert isinstance(graph_circuit, QuantumCircuit), logger.error(
+            "graph_circuit should be an instance of QuantumCircuit")
         # concatenate graph_circuit and stabilizer_circuits
         circuits = []
         for name, stab_circuit in stabilizer_circuits.items():
             circ = graph_circuit.copy()
-            stab_circuit.to_gate(label=name)
-            circ.append(stab_circuit)
+            stab_gate = stab_circuit.to_gate(label=name)
+            circ.append(stab_gate, qargs=range(stab_gate.num_qubits))
             circ.measure_all()
             circuits.append(circ)
 
         # transpile circuits
         self.transpile_circuit(circuits, {})
 
-        results = {"counts": None, "cx_counts": None}
+        # execute
         if isinstance(self.backend, IBMQBackend):
             qjob_dict = self.execute_circuit(
                 circuit=circuits, execute=execute)
             if execute:
                 job_monitor(qjob_dict["job"], interval=5)
-            results["counts"] = qjob_dict["job"].result().get_counts()
-            results["cx_counts"] = self.count_cx_gates(
-                stabilizer_circuits, qjob_dict["qobj"])
+            counts = qjob_dict["job"].result().get_counts()
         else:
-            results["counts"] = self.simulate_circuit(circuits)
-        return results
+            counts = self.simulate_circuit(circuits)
+        return counts
 
-    @staticmethod
-    def count_cx_gates(stabilizer_circuits: Dict[str, QuantumCircuit],
-                       q_obj: Qobj) -> Dict[str, int]:
-        cx_counts = {}
-        q_dict = q_obj.to_dict()
-        for idx, circ_name in enumerate(stabilizer_circuits.keys()):
-            cx_counter = 0
-            instr = q_dict['experiments'][idx]['instructions']
-            for gate in instr:
-                if gate['name'] == 'cx':
-                    cx_counter += 1
-            cx_counts[circ_name] = cx_counter
+    # @staticmethod
+    # def count_cx_gates(stabilizer_circuits: Dict[str, QuantumCircuit],
+    #                    q_obj: Qobj) -> Dict[str, int]:
+    #     cx_counts = {}
+    #     q_dict = q_obj.to_dict()
+    #     for idx, circ_name in enumerate(stabilizer_circuits.keys()):
+    #         cx_counter = 0
+    #         instr = q_dict['experiments'][idx]['instructions']
+    #         for gate in instr:
+    #             if gate['name'] == 'cx':
+    #                 cx_counter += 1
+    #         cx_counts[circ_name] = cx_counter

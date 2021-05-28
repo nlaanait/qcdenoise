@@ -10,6 +10,7 @@ from qiskit.providers.ibmq import least_busy
 from qiskit.test.mock import FakeMontreal
 
 os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
 @pytest.fixture()
@@ -90,18 +91,18 @@ def test_DeviceNoiseSampler(get_circuit_device_dict, n_qubits):
         pytest.fail()
 
 
-# @pytest.mark.dependency()
-# def test_HardwareSampler(
-#         get_circuit_hw_dict, get_hardware_backend, n_qubits):
-#     circuit_dict = get_circuit_hw_dict
-#     sampler = qcd.HardwareSampler(get_hardware_backend, n_shots=1024)
-#     timestamp = datetime.now()
-#     job_name = f"qcdenoise-test-{timestamp}"
-#     try:
-#         prob_vec = sampler.sample(
-#             circuit_dict["circuit"],
-#             execute=True,
-#             job_name=job_name)
-#         assert prob_vec.shape == (2**n_qubits,)
-#     except BaseException:
-#         pytest.fail()
+@pytest.mark.dependency()
+def test_HardwareSampler(
+        get_circuit_hw_dict, get_hardware_backend, n_qubits):
+    circuit_dict = get_circuit_hw_dict
+    sampler = qcd.HardwareSampler(get_hardware_backend, n_shots=1024)
+    timestamp = datetime.now()
+    job_name = f"qcdenoise-test-{timestamp}"
+    try:
+        prob_vec = sampler.sample(
+            circuit_dict["circuit"],
+            execute=True,
+            job_name=job_name)
+        assert prob_vec.shape == (2**n_qubits,)
+    except BaseException:
+        pytest.fail()

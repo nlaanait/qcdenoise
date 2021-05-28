@@ -1,13 +1,16 @@
+# QC
 from .samplers import *
-from .dataset import *
-from .models import *
 from .graph_data import *
 from .graph_state import *
 from .graph_circuit import *
 from .stabilizers import *
 from .simulate import *
-from .config import *
 from .witnesses import *
+# config
+from .config import *
+# ML
+from .dataset import *
+from .models import *
 
 __version__ = "0.0.1"
 
