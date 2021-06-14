@@ -344,7 +344,7 @@ class UnitaryNoiseSampler(CircuitSampler):
     Every call to `sample()` produces a new noise model and executes the
     circuit measurements.
 
-    # Example:
+    ### Example:
     ```python
     # GraphState() --> GraphCircuit().build() --> circ_dict
     sampler = qcd.UnitaryNoiseSampler()

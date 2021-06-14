@@ -34,14 +34,14 @@ def graph_circuit(n_qubits, graph_state):
 
 
 @pytest.mark.dependency()
-def test_TothStabilizer(graph_state):
+def test_TothStabilizer(graph_state, n_qubits):
     stabilizer = qcd.TothStabilizer(graph_state, n_qubits=n_qubits)
     stab_ops = stabilizer.find_stabilizers()
     circuit_dict = stabilizer.build()
 
 
 @pytest.mark.dependency()
-def test_JungStabilizer(graph_state):
+def test_JungStabilizer(graph_state, n_qubits):
     stabilizer = qcd.JungStabilizer(graph_state, n_qubits=n_qubits)
     stab_ops = stabilizer.find_stabilizers(noise_robust=0)
     circuit_dict = stabilizer.build(noise_robust=0)
