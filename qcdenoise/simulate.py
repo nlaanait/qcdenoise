@@ -69,7 +69,7 @@ class AdjTensorSpecs:
     """Specifications for adjacency tensor representation of a circuit
     """
     tensor_shape: tuple
-    fixed_size: bool = True,
+    fixed_size: bool = True
     directed: bool = False
 
 
