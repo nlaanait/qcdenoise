@@ -44,7 +44,8 @@ class Witness:
         b = [1., -1.]
         diags = OrderedDict()
         for name in self.stabilizer_circuits.keys():
-            stab_sgn, stab_ops = sgn_convert[name[0]], list(name[1:])
+            #stab_sgn, stab_ops = sgn_convert[name[0]], list(name[1:])
+            stab_sgn, stab_ops = sgn_convert['+'], list(name)
             stab_ops_temp = stab_ops.copy()
             pop_op = stab_ops_temp.pop()
             D = a if pop_op == 'I' else b
