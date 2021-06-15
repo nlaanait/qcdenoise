@@ -115,7 +115,8 @@ class GenuineWitness(Witness):
         assert noise_robust == 0, logger.error(
             "only noise_robust=0 is implemented")
         if noise_robust == 0:
-            id_key = '+' + 'I' * self.n_qubits
+            #id_key = '+' + 'I' * self.n_qubits
+            id_key = 'I' * self.n_qubits
             id_exp_val = self.stabilizer_measurements[id_key]
             id_idx = -1
             self.stabilizer_circuits.move_to_end(id_key)
