@@ -129,8 +129,8 @@ class GenuineWitness(Witness):
             sum_exp_val = sum(meas_vals)
             W_ = (graph.order() - 1) * id_exp_val - \
                 (sum_exp_val - id_exp_val)
-            logger.info(
-                "error prop. of genuine witness estimation is not implemented")
+            #logger.info(
+            #    "error prop. of genuine witness estimation is not implemented")
             nl = len(self.stabilizer_circuits.keys())
             ns = len(
                 [key for key in self.stabilizer_circuits.keys()
@@ -141,4 +141,4 @@ class GenuineWitness(Witness):
             witness_terms = np.multiply(wit_coef, meas_vals)
             arr = unumpy.uarray(witness_terms, var_vals)
             return witness_output(
-                W_ij=None, value=W_, var=unumpy.std_devs(arr.sum().tolist()))
+                W_ij=None, value=W_, variance=unumpy.std_devs(arr.sum()))
