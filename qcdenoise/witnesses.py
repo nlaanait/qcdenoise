@@ -117,7 +117,7 @@ class GenuineWitness(Witness):
         if noise_robust == 0:
             #id_key = '+' + 'I' * self.n_qubits
             id_key = 'I' * self.n_qubits
-            id_exp_val = self.stabilizer_measurements[id_key]
+            id_exp_val,_ = self.stabilizer_measurements[id_key]
             id_idx = -1
             self.stabilizer_circuits.move_to_end(id_key)
             meas_vals = [
