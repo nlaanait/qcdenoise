@@ -13,6 +13,7 @@ import qiskit as qk
 from qiskit.tools import job_monitor
 from qiskit.test.mock.fake_pulse_backend import FakePulseBackend
 from qiskit.providers.ibmq import IBMQBackend
+from qiskit.providers.aer import AerSimulator
 from qiskit.providers.aer.noise import NoiseModel, errors
 from qiskit.providers.models.backendproperties import (BackendProperties, Gate,
                                                        Nduv)
@@ -234,7 +235,7 @@ class CircuitSampler:
     """
 
     def __init__(self,
-                 backend: Union[IBMQBackend, FakePulseBackend] = None,
+                 backend: Union[AerSimulator,IBMQBackend, FakePulseBackend] = None,
                  n_shots: int = 1024,
                  noise_specs: NoiseSpec = None) -> None:
         """initialization
@@ -247,10 +248,11 @@ class CircuitSampler:
         """
         self.n_shots = n_shots
         if backend:
-            assert isinstance(backend, (IBMQBackend, FakePulseBackend)), \
+            assert isinstance(backend, (AerSimulator,IBMQBackend, FakePulseBackend)), \
                 logger.error(
                     "passed backend is not instance of IBMQBackend" +
-                    "or FakePulseBackend (mock backend)")
+                    "or FakePulseBackend (mock pulse backend)" +
+                    "or Aersimulator (AerSimulator / mock hardware backend)")
         self.backend = backend
         self.transpiled_circuit = None
         self.circuit_dag = None
@@ -305,7 +307,10 @@ class CircuitSampler:
 
     def simulate_circuit(self, circuit: qk.QuantumCircuit):
         logger.info("Simulating Circuit on AerSimulator")
-        job = qk.execute(circuit, backend=qk.Aer.get_backend("aer_simulator"),
+        #job = qk.execute(circuit, backend=qk.Aer.get_backend("aer_simulator"),
+        #                 noise_model=self.noise_model,
+        #                 shots=self.n_shots)
+        job = qk.execute(circuit, backend=self.backend,
                          noise_model=self.noise_model,
                          shots=self.n_shots)
         result = job.result()

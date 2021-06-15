@@ -8,6 +8,8 @@ import numpy as np
 import qiskit as qk
 from qiskit import QuantumCircuit
 from qiskit.providers.ibmq import IBMQBackend
+from qiskit.providers.aer import AerSimulator
+from qiskit.providers.aer.noise import NoiseModel
 from qiskit.qobj import Qobj
 from qiskit.result.counts import Counts
 from qiskit.test.mock.fake_pulse_backend import FakePulseBackend
@@ -215,15 +217,17 @@ class JungStabilizer(StabilizerCircuit):
 
 
 class StabilizerSampler(CircuitSampler):
-    def __init__(self, backend: Union[IBMQBackend, FakePulseBackend],
+    def __init__(self, backend: Union[AerSimulator,IBMQBackend, FakePulseBackend],
                  n_shots: int) -> None:
         super().__init__(
             backend=backend,
             n_shots=n_shots)
 
+
     def sample(self, stabilizer_circuits: Dict[str, QuantumCircuit],
                graph_circuit: QuantumCircuit,
-               execute: bool = True) -> List[Counts]:
+               execute: bool = True,
+               noise_model: NoiseModel = None) -> List[Counts]:
 
         assert isinstance(graph_circuit, QuantumCircuit), logger.error(
             "graph_circuit should be an instance of QuantumCircuit")
@@ -238,7 +242,7 @@ class StabilizerSampler(CircuitSampler):
 
         # transpile circuits
         self.transpile_circuit(circuits, {})
-
+        self.noise_model = noise_model
         # execute
         if isinstance(self.backend, IBMQBackend):
             qjob_dict = self.execute_circuit(
@@ -248,6 +252,7 @@ class StabilizerSampler(CircuitSampler):
             counts = qjob_dict["job"].result().get_counts()
         else:
             counts = self.simulate_circuit(circuits)
+
         return counts
 
     # @staticmethod
