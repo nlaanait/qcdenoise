@@ -121,7 +121,7 @@ class StabilizerCircuit:
                          noise_robust: int = 0) -> List[str]:
         raise NotImplementedError
 
-    def build(self, drop_coef: bool = True, **
+    def build(self, drop_coef: bool = False, **
               kwargs) -> OrderedDictType[str, QuantumCircuit]:
         _ = self.find_stabilizers(**kwargs)
         unique_stabilizers = get_unique_operators(self.stabilizers)
@@ -132,8 +132,10 @@ class StabilizerCircuit:
             q_reg = qk.QuantumRegister(self.n_qubits)
             circ = qk.QuantumCircuit(q_reg, name=sdx)
             if drop_coef:
+                # drop leading character +/- and reverse Paulii string
                 stab_ops = list(sdx[1:])[::-1]
             else:
+                # reverse Pauili string
                 stab_ops = list(sdx)[::-1]
             for idx in range(len(stab_ops)):
                 op_str = stab_ops[idx]
