@@ -252,7 +252,6 @@ class StabilizerSampler(CircuitSampler):
             counts = qjob_dict["job"].result().get_counts()
         else:
             counts = self.simulate_circuit(circuits)
-
         return counts
 
     # @staticmethod

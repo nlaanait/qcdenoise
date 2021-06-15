@@ -105,7 +105,7 @@ class BiSeparableWitness(Witness):
             arr = unumpy.uarray(meas_vals, std_vals)
 
             results[idx] = witness_output(W_ij=tuple(
-                [e0, e1], value=val, var=unumpy.std_devs(arr.sum()).tolist()))
+                [e0, e1]), value=val, variance=unumpy.std_devs(arr.sum()))
         return results
 
 
