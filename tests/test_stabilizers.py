@@ -1,6 +1,7 @@
 import os
 
 import pytest
+from qiskit import circuit
 from qiskit.result.counts import Counts
 import qcdenoise as qcd
 from qiskit.test.mock import FakeMontreal
@@ -11,7 +12,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 @pytest.fixture()
 def n_qubits():
-    return 4
+    return 6
 
 
 @pytest.fixture()
@@ -36,15 +37,17 @@ def graph_circuit(n_qubits, graph_state):
 @pytest.mark.dependency()
 def test_TothStabilizer(graph_state, n_qubits):
     stabilizer = qcd.TothStabilizer(graph_state, n_qubits=n_qubits)
-    stab_ops = stabilizer.find_stabilizers()
+    _ = stabilizer.find_stabilizers()
     circuit_dict = stabilizer.build()
+    assert(len(circuit_dict.values()) == n_qubits + 1)
 
 
 @pytest.mark.dependency()
 def test_JungStabilizer(graph_state, n_qubits):
     stabilizer = qcd.JungStabilizer(graph_state, n_qubits=n_qubits)
-    stab_ops = stabilizer.find_stabilizers(noise_robust=0)
+    _ = stabilizer.find_stabilizers(noise_robust=0)
     circuit_dict = stabilizer.build(noise_robust=0)
+    assert(len(circuit_dict.values()) == n_qubits + 1)
 
 
 @pytest.mark.dependency(depends=["test_TothStabilizer"])
