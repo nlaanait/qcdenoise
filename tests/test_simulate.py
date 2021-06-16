@@ -7,6 +7,7 @@ import qcdenoise as qcd
 from qiskit.test.mock import FakeMontreal
 
 os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 
 @pytest.fixture()

@@ -84,7 +84,7 @@ class CXGateCircuit(GraphCircuit):
         unitary_op = Operator(np.identity(4))
         self.circuit.h(range(self.n_qubits))
         for node, ngbr in self.graph_iter:
-            #self.circuit.h(node)
+            # self.circuit.h(node)
             self.circuit.h(ngbr)
             self.circuit.cx(node, ngbr)
             # insert custom unitary after controlled gate
@@ -94,7 +94,7 @@ class CXGateCircuit(GraphCircuit):
                 self.circuit.unitary(
                     unitary_op, [
                         node, ngbr], label=label)
-            #self.circuit.h(node)
+            # self.circuit.h(node)
             self.circuit.h(ngbr)
         return {"circuit": self.circuit.copy(), "ops": ops_labels}
 
@@ -157,7 +157,7 @@ class CPhaseGateCircuit(GraphCircuit):
             self.circuit.cx(node, ngbr)
             if bool(np.random.choice(2)) and self.stochastic:
                 label = f'unitary_{node}_{ngbr}'
-                self.ops_labels.append(label)
+                ops_labels.append(label)
                 self.circuit.unitary(
                     unitary_op, [
                         node, ngbr], label=label)
