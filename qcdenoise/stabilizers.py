@@ -175,40 +175,42 @@ class JungStabilizer(StabilizerCircuit):
         """
         assert noise_robust == 0, logger.error(
             "only noise_robust=0 is currently implemented ")
-        stabilizers = []
-        binary_keys = [np.binary_repr(
-            x, self.n_qubits) for x in range(
-            2**self.n_qubits)]
-        for idx in binary_keys:
-            coefs = [int(x) for x in list(idx)]
-            op_mat = []
-            for jdx in range(len(coefs)):
-                if coefs[jdx] == 0:
-                    op_mat.append(
-                        list('I' * self.n_qubits))
-                elif coefs[jdx] == 1:
-                    op_mat.append(
-                        list(self.generators[jdx]))
-            op_mat = np.asarray(op_mat)
-            cf_arr = []
-            lb_arr = []
-            for kdx in range(op_mat.shape[0]):
-                cf, lb = sigma_prod(
-                    ''.join(op_mat[:, kdx]))
-                cf_arr.append(cf)
-                lb_arr.append(lb)
-            if np.iscomplex(np.prod(cf_arr)):
-                logger.error(
-                    "Flag-error, coefficient cannot be complex")
-                return
-            else:
-                val = np.prod(cf_arr)
-                if np.real(val) == 1:
-                    stabilizers.append(
-                        '+' + ''.join(lb_arr))
-                else:
-                    stabilizers.append(
-                        '-' + ''.join(lb_arr))
+        #stabilizers = []
+        #binary_keys = [np.binary_repr(
+        #    x, self.n_qubits) for x in range(
+        #    2**self.n_qubits)]
+        #for idx in binary_keys:
+        #    coefs = [int(x) for x in list(idx)]
+        #    op_mat = []
+        #    for jdx in range(len(coefs)):
+        #        if coefs[jdx] == 0:
+        #            op_mat.append(
+        #                list('I' * self.n_qubits))
+        #        elif coefs[jdx] == 1:
+        #            op_mat.append(
+        #                list(self.generators[jdx]))
+            #op_mat = np.asarray(op_mat)
+            #cf_arr = []
+            #lb_arr = []
+            #for kdx in range(op_mat.shape[0]):
+            #    cf, lb = sigma_prod(
+            #        ''.join(op_mat[:, kdx]))
+            #    cf_arr.append(cf)
+            #    lb_arr.append(lb)
+            #if np.iscomplex(np.prod(cf_arr)):
+            #    logger.error(
+            #        "Flag-error, coefficient cannot be complex")
+            #    return
+        #    else:
+        #        val = np.prod(cf_arr)
+        #        if np.real(val) == 1:
+        #            stabilizers.append(
+        #                '+' + ''.join(lb_arr))
+        #        else:
+        #            stabilizers.append(
+        #                '-' + ''.join(lb_arr))
+        stabilizers = ['+' + x for x in self.generators]
+        stabilizers.append('+' + 'I' * self.n_qubits)
         self.stabilizers = deepcopy(stabilizers)
         return stabilizers
 
