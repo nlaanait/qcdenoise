@@ -2,6 +2,7 @@ import os
 
 import pytest
 from qiskit.result.counts import Counts
+from qiskit.providers.aer import AerSimulator
 import qcdenoise as qcd
 from qiskit.test.mock import FakeMontreal
 
@@ -48,9 +49,10 @@ def test_JungStabilizer(graph_state, n_qubits):
 
 
 @pytest.mark.dependency(depends=["test_TothStabilizer"])
-def test_StabilizerSampler(stabilizer_circuits, graph_circuit):
+def test_StabilizerSampler(stabilizer_circuits, graph_circuit,n_qubits):
+    assert(len(stabilizer_circuits.values())==n_qubits+1)
     sampler = qcd.StabilizerSampler(
-        backend=FakeMontreal(), n_shots=1024)
+        backend=AerSimulator.from_backend(FakeMontreal()), n_shots=1024)
     counts = sampler.sample(stabilizer_circuits=stabilizer_circuits,
                             graph_circuit=graph_circuit)
     assert len(counts) == len(stabilizer_circuits.values())
