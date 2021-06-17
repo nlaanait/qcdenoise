@@ -20,7 +20,7 @@ from sympy.physics.paulialgebra import Pauli, evaluate_pauli_product
 from .config import get_module_logger
 from .samplers import CircuitSampler, NoiseSpec
 
-__all__ = ["TothStabilizer", "JungStabilizer", "StabilizerSampler"]
+__all__ = ["TothStabilizer", "StabilizerSampler"]
 
 # module logger
 logger = get_module_logger(__name__)
@@ -167,62 +167,15 @@ class TothStabilizer(StabilizerCircuit):
 
 
 class JungStabilizer(StabilizerCircuit):
-    def find_stabilizers(self, noise_robust: int = 0) -> List[str]:
-        """
-        noise_robust="0": no additional terms added to genuine entanglement witness
-        noise_robust="1": single B vertex set
-        noise_robust="2": all B vertex sets used
-        """
-        assert noise_robust == 0, logger.error(
-            "only noise_robust=0 is currently implemented ")
-        stabilizers = []
-        binary_keys = [np.binary_repr(
-            x, self.n_qubits) for x in range(
-            2**self.n_qubits)]
-        for idx in binary_keys:
-            coefs = [int(x) for x in list(idx)]
-            op_mat = []
-            for jdx in range(len(coefs)):
-                if coefs[jdx] == 0:
-                    op_mat.append(
-                        list('I' * self.n_qubits))
-                elif coefs[jdx] == 1:
-                    op_mat.append(
-                        list(self.generators[jdx]))
-            op_mat = np.asarray(op_mat)
-            cf_arr = []
-            lb_arr = []
-            for kdx in range(op_mat.shape[0]):
-                cf, lb = sigma_prod(
-                    ''.join(op_mat[:, kdx]))
-                cf_arr.append(cf)
-                lb_arr.append(lb)
-            if np.iscomplex(np.prod(cf_arr)):
-                logger.error(
-                    "Flag-error, coefficient cannot be complex")
-                return
-            else:
-                val = np.prod(cf_arr)
-                if np.real(val) == 1:
-                    stabilizers.append(
-                        '+' + ''.join(lb_arr))
-                else:
-                    stabilizers.append(
-                        '-' + ''.join(lb_arr))
-        self.stabilizers = deepcopy(stabilizers)
-        return stabilizers
-
-    def build(self, noise_robust: int = 0):
-        return super().build(noise_robust=noise_robust)
+    ...
 
 
 class StabilizerSampler(CircuitSampler):
-    def __init__(self, backend: Union[AerSimulator,IBMQBackend, FakePulseBackend],
+    def __init__(self, backend: Union[AerSimulator, IBMQBackend, FakePulseBackend],
                  n_shots: int) -> None:
         super().__init__(
             backend=backend,
             n_shots=n_shots)
-
 
     def sample(self, stabilizer_circuits: Dict[str, QuantumCircuit],
                graph_circuit: QuantumCircuit,

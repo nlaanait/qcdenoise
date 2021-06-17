@@ -12,7 +12,7 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 @pytest.fixture()
 def n_qubits():
-    return 6
+    return 4
 
 
 @pytest.fixture()
@@ -39,14 +39,6 @@ def test_TothStabilizer(graph_state, n_qubits):
     stabilizer = qcd.TothStabilizer(graph_state, n_qubits=n_qubits)
     _ = stabilizer.find_stabilizers()
     circuit_dict = stabilizer.build()
-    assert(len(circuit_dict.values()) == n_qubits + 1)
-
-
-@pytest.mark.dependency()
-def test_JungStabilizer(graph_state, n_qubits):
-    stabilizer = qcd.JungStabilizer(graph_state, n_qubits=n_qubits)
-    _ = stabilizer.find_stabilizers(noise_robust=0)
-    circuit_dict = stabilizer.build(noise_robust=0)
     assert(len(circuit_dict.values()) == n_qubits + 1)
 
 
