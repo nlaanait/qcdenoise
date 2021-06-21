@@ -1,6 +1,6 @@
 ## ``qcdenoise``
 
-(Classical) Machine Learning-based error mitigation of quantum circuits based on highly entangled Graph states
+(Classical) Machine Learning of quantum circuits executing ansatz built out of multipartite entangled Graph states.
 # Table of Contents
 - [Table of Contents](#table-of-contents)
     - [Description](#description)
