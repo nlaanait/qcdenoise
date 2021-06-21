@@ -1,21 +1,27 @@
 """Module for generating and simulating graph state-based circuits
 """
+from copy import deepcopy
 from dataclasses import asdict, dataclass
-from typing import Dict, Union
+
+from qcdenoise.stabilizers import StabilizerSampler, TothStabilizer
+from typing import Dict, NamedTuple, Union
 
 import numpy as np
 from qiskit.circuit.quantumcircuit import QuantumCircuit
 from qiskit.providers.ibmq import IBMQBackend
-from qiskit.test.mock import FakeMontreal
+from qiskit.test.mock import FakeMontreal, FakeBackend
 from qiskit.test.mock.fake_pulse_backend import FakePulseBackend
+import networkx as nx
 
-from .graph_circuit import CXGateCircuit, GraphCircuit
+from .config import get_module_logger
+from .graph_circuit import (CPhaseGateCircuit, CXGateCircuit, CZGateCircuit,
+                            GraphCircuit)
 from .graph_data import GraphData, GraphDB, HeinGraphData
 from .graph_state import GraphState
-from .samplers import (CircuitSampler, DeviceNoiseSampler, HardwareSampler,
-                       NoiseSpec, UnitaryNoiseSampler, encode_basis_gates,
+from .samplers import (DeviceNoiseSampler, HardwareSampler, NoiseSpec,
+                       UnitaryNoiseSampler, encode_basis_gates,
                        generate_adjacency_tensor, unitary_noise_spec)
-from .config import get_module_logger
+from .witnesses import BiSeparableWitness, GenuineWitness
 
 __all__ = [
     "GraphSpecs",
@@ -23,8 +29,10 @@ __all__ = [
     "CircuitSpecs",
     "AdjTensorSpecs",
     "SimulationSpecs",
+    "EntanglementSpecs",
     "adjacency_tensor_op",
     "circuit_sampling_op",
+    "estimate_entanglement_op",
     "simulate"]
 
 
@@ -47,7 +55,7 @@ class GraphSpecs:
 class SamplingSpecs:
     """Specifications for Circuit Sampling
     """
-    sampler: CircuitSampler
+    sampler: Union[DeviceNoiseSampler, UnitaryNoiseSampler]
     noise_specs: NoiseSpec
     sample_options: dict = None
     transpile_options: dict = None
@@ -58,7 +66,7 @@ class SamplingSpecs:
 class CircuitSpecs:
     """Specifications for Graph Circuit construction
     """
-    builder: GraphCircuit
+    builder: Union[CXGateCircuit, CZGateCircuit, CPhaseGateCircuit]
     stochastic: bool
     build_options: dict = None
     gate_type: str = "none"
@@ -77,7 +85,10 @@ class AdjTensorSpecs:
 class EntanglementSpecs:
     """Specifications for estimating multi-partite entanglement
     """
-    pass
+    witness: Union[GenuineWitness, BiSeparableWitness]
+    stabilizer: TothStabilizer
+    stabilizer_sampler: StabilizerSampler = StabilizerSampler
+    n_shots: int = 1024
 
 
 @dataclass(init=True)
@@ -88,32 +99,15 @@ class SimulationSpecs:
     n_circuits: int
     data: GraphData
     circuit: CircuitSpecs
-    backend: Union[IBMQBackend, FakePulseBackend]
-
-
-# default values
-graph_specs = GraphSpecs()
-circuit_specs = CircuitSpecs(builder=CXGateCircuit,
-                             stochastic=True
-                             )
-sample_specs = SamplingSpecs(
-    sampler=UnitaryNoiseSampler,
-    noise_specs=unitary_noise_spec)
-adj_tensor_specs = AdjTensorSpecs(
-    tensor_shape=(16, 32, 32))
-entangle_specs = None
-sim_specs = SimulationSpecs(
-    n_qubits=7,
-    n_circuits=10,
-    circuit=circuit_specs,
-    data=HeinGraphData,
-    backend=FakeMontreal())
+    backend: Union[IBMQBackend, FakePulseBackend] = None
 
 
 def adjacency_tensor_op(
         circuit: QuantumCircuit,
         backend: Union[IBMQBackend, FakePulseBackend],
-        sampler: CircuitSampler,
+        sampler: Union[UnitaryNoiseSampler,
+                       DeviceNoiseSampler,
+                       HardwareSampler],
         sampler_specs: SamplingSpecs,
         adj_tensor_specs: AdjTensorSpecs) -> np.ndarray:
     """Operation which returns an adjacency tensor. This op is wrapper around
@@ -140,18 +134,18 @@ def adjacency_tensor_op(
     return adj_tensor
 
 
-def circuit_sampling_op(graph_state: GraphState,
-                        graph_specs: GraphSpecs,
+def circuit_sampling_op(graph: Union[nx.Graph, nx.DiGraph],
                         circ_builder: GraphCircuit,
                         circ_specs: CircuitSpecs,
-                        sampler: CircuitSampler,
+                        sampler: Union[DeviceNoiseSampler,
+                                       UnitaryNoiseSampler,
+                                       HardwareSampler],
                         sampler_specs: SamplingSpecs
                         ) -> Dict:
     """Operation which samples a probability vector from the quantum circuit.
 
     Args:
-        graph_state (GraphState): generator of graph states
-        graph_specs (GraphSpecs): graph generation specs
+        graph (nx.Graph, nx.Digraph): graph state
         circ_builder (GraphCircuit): circuit builder
         circ_specs (CircuitSpecs): circuit specifications
         sampler (CircuitSampler): circuit sampler
@@ -161,9 +155,9 @@ def circuit_sampling_op(graph_state: GraphState,
         Dict: `{"prob_vector": probability vector,
         "graph": nx.Graph used, "circuit": sampled quantum circuit}`
     """
-    graph = graph_state.sample(
-        min_vertex_cover=graph_specs.min_vertex_cover,
-        max_itr=graph_specs.max_itr)
+    # graph = graph_state.sample(
+    #     min_vertex_cover=graph_specs.min_vertex_cover,
+    #     max_itr=graph_specs.max_itr)
     if circ_specs.build_options:
         circ_dict = circ_builder.build(
             graph, **circ_specs.build_options)
@@ -178,17 +172,38 @@ def circuit_sampling_op(graph_state: GraphState,
             circ_dict["circuit"],
             **sample_kwargs)
     return {"prob_vec": prob_vec,
-            "graph": graph, "circuit": circ_dict["circuit"]}
+            "graph": graph,
+            "circuit": circ_dict["circuit"],
+            "noise_model": deepcopy(sampler.noise_model)}
 
 
-def estimate_entanglement(*args, **kwargs):
-    pass
+def estimate_entanglement_op(
+        graph: Union[nx.Graph, nx.DiGraph],
+        graph_circuit: QuantumCircuit,
+        entangle_specs: EntanglementSpecs,
+        n_qubits: int,
+        backend: Union[IBMQBackend,
+                       FakeBackend,
+                       FakePulseBackend] = None) -> NamedTuple:
+    stabilizer = entangle_specs.stabilizer(graph, n_qubits)
+    stab_circs = stabilizer.build()
+    sampler = entangle_specs.stabilizer_sampler(
+        n_shots=entangle_specs.n_shots, backend=backend)
+    counts = sampler.sample(
+        stabilizer_circuits=stab_circs,
+        graph_circuit=graph_circuit)
+    logger.info(f"counts={counts}")
+    witness = entangle_specs.witness(
+        n_qubits=n_qubits,
+        stabilizer_circuits=stab_circs,
+        stabilizer_counts=counts)
+    return witness.estimate(graph=graph)
 
 
 def simulate(sim_specs: SimulationSpecs,
              sampler_specs: SamplingSpecs,
              graph_specs: GraphSpecs,
-             adj_tensor_specs: AdjTensorSpecs,
+             adj_tensor_specs: AdjTensorSpecs = None,
              entangle_specs: EntanglementSpecs = None) -> Dict:
     """Main simulation function
 
@@ -204,6 +219,24 @@ def simulate(sim_specs: SimulationSpecs,
         Dict: results dictionary w/ format `{"circuit_number":{"prob_vec":...,
         "graph_data":..., "adjacency_tensor":...}}`
     """
+    # results dictionary
+    results = {i: {} for i in range(sim_specs.n_circuits)}
+
+    # validate inputs
+    logger.debug("Validating Input")
+    assert isinstance(sim_specs, SimulationSpecs), logger.error(
+        "sim_specs must be an instance of SimulationSpecs")
+    assert isinstance(sampler_specs, SamplingSpecs), logger.error(
+        "sampler_specs must be an instance of SamplingSpecs")
+    assert isinstance(graph_specs, GraphSpecs), logger.error(
+        "graph_specs must be an instance of SimulationSpecs")
+    if adj_tensor_specs:
+        assert isinstance(adj_tensor_specs, AdjTensorSpecs), logger.error(
+            "adj_tensor_specs must be an instance of AdjTensorSpecs")
+    if entangle_specs:
+        assert isinstance(entangle_specs, EntanglementSpecs), logger.error(
+            "entangle_specs must be an instance of EntanglementSpecs")
+
     # instantiate GraphDB, GraphState, GraphCircuit, and
     # CircuitSampler
     logger.debug(
@@ -220,9 +253,9 @@ def simulate(sim_specs: SimulationSpecs,
         n_qubits=sim_specs.n_qubits,
         stochastic=sim_specs.circuit.stochastic)
     sampler = sampler_specs.sampler(
-        n_shots=sample_specs.n_shots,
+        n_shots=sampler_specs.n_shots,
         backend=sim_specs.backend,
-        noise_specs=sample_specs.noise_specs)
+        noise_specs=sampler_specs.noise_specs)
 
     # validate specs
     logger.debug(
@@ -230,35 +263,38 @@ def simulate(sim_specs: SimulationSpecs,
     if sim_specs.circuit.stochastic:
         assert isinstance(sampler, UnitaryNoiseSampler), \
             logger.error("stochastic gates are not compatible with sampler" +
-                         f"={sample_specs.sampler}, sampler shoud be set " +
+                         f"={sampler_specs.sampler}, sampler shoud be set " +
                          "to UnitaryNoiseSampler")
-    if isinstance(sim_specs.backend, FakePulseBackend):
+    if isinstance(sim_specs.backend, (FakeBackend, FakePulseBackend)):
         assert isinstance(sampler,
                           (UnitaryNoiseSampler, DeviceNoiseSampler)), \
             logger.error("Fake Backend is not compatible with sampler=" +
                          f"{sampler}, sampler should be one of:\n"
                          + "1. UnitaryNoiseSampler,\n2. DeviceNoiseSampler")
 
-    results = {i: {} for i in range(sim_specs.n_circuits)}
-    # sample prob vector
+    # Simulating
     for num in range(sim_specs.n_circuits):
-        logger.debug(f"Simulating circuit #{num}")
+        # sample graph state
+        logger.info("Sampling Graph State")
+        logger.debug(f"iter: {num}- Sampling a graph state")
+        graph = graph_state.sample(
+            min_vertex_cover=graph_specs.min_vertex_cover,
+            max_itr=graph_specs.max_itr)
+        results[num]["graph_data"] = list(graph.edges())
+        logger.debug(f"iter: {num}- Simulating circuit")
+
         # sample prob vector
-        if sampler_specs:
-            logger.info("Sampling Circuit")
-            sampling_op_out = circuit_sampling_op(
-                graph_state,
-                graph_specs,
-                circ_builder,
-                sim_specs.circuit,
-                sampler,
-                sampler_specs)
-            results[num]["prob_vec"] = sampling_op_out["prob_vec"]
-            results[num]["graph_data"] = list(
-                sampling_op_out["graph"].edges())
-        else:
-            return results
+        logger.info("Building Circuit and Measurement")
+        sampling_op_out = circuit_sampling_op(
+            graph,
+            circ_builder,
+            sim_specs.circuit,
+            sampler,
+            sampler_specs)
+        results[num]["prob_vec"] = sampling_op_out["prob_vec"]
+
         # construct adjacency tensor
+        logger.debug(f"iter: {num}- Building Adjacency Tensor")
         if adj_tensor_specs:
             logger.info(
                 "Generating an adjacency tensor representation")
@@ -271,10 +307,20 @@ def simulate(sim_specs: SimulationSpecs,
             results[num]["adj_tensor"] = adj_tensor
 
         # estimate entanglement
+        logger.debug(f"iter: {num}- Estimating Entanglement")
+        logger.info(
+            "Estimating Multi-partite Entanglement")
         if entangle_specs:
-            logger.info("Estimating Entanglement")
-            results["entanglement"] = None
-            pass
+            entangle_op_out = estimate_entanglement_op(
+                graph=graph,
+                entangle_specs=entangle_specs,
+                n_qubits=sim_specs.n_qubits,
+                graph_circuit=sampling_op_out["circuit"],
+                backend=sim_specs.backend)
+
+            results[num]["entanglement"] = {"value": entangle_op_out.value,
+                                            "variance": entangle_op_out.variance}
+
     logger.debug(f"Results of simulation: {results}")
     logger.info("Finished simulation run")
     return results

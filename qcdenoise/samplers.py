@@ -311,8 +311,14 @@ class CircuitSampler:
             assert isinstance(
                 self.backend, (FakePulseBackend, FakeBackend))
             sim_backend = AerSimulator.from_backend(self.backend)
+            logger.info(
+                f"Aer Simulator from backend:{self.backend.name()}")
         else:
             sim_backend = AerSimulator()
+        if self.noisy:
+            logger.info("Simulation: Noisy, specified noise_model")
+        else:
+            logger.info("Simulation: Ideal, w/o noise_model")
         job = qk.execute(circuit, backend=sim_backend,
                          noise_model=self.noise_model,
                          shots=self.n_shots)

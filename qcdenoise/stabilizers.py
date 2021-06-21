@@ -1,4 +1,5 @@
 from copy import deepcopy
+import logging
 from typing import Dict, List, Union
 from typing import OrderedDict as OrderedDictType
 
@@ -12,6 +13,7 @@ from qiskit.providers.aer import AerSimulator
 from qiskit.providers.aer.noise import NoiseModel
 from qiskit.qobj import Qobj
 from qiskit.result.counts import Counts
+from qiskit.test.mock.fake_backend import FakeBackend
 from qiskit.test.mock.fake_pulse_backend import FakePulseBackend
 from qiskit.tools.monitor.job_monitor import job_monitor
 from sympy import I
@@ -171,7 +173,8 @@ class JungStabilizer(StabilizerCircuit):
 
 
 class StabilizerSampler(CircuitSampler):
-    def __init__(self, backend: Union[AerSimulator, IBMQBackend, FakePulseBackend],
+    def __init__(self, backend: Union[IBMQBackend, FakePulseBackend,
+                                      FakeBackend],
                  n_shots: int) -> None:
         super().__init__(
             backend=backend,
@@ -179,13 +182,15 @@ class StabilizerSampler(CircuitSampler):
 
     def sample(self, stabilizer_circuits: Dict[str, QuantumCircuit],
                graph_circuit: QuantumCircuit,
-               execute: bool = True,
-               noise_model: NoiseModel = None) -> List[Counts]:
+               execute: bool = False,
+               noise_model: NoiseModel = None) -> Union[List[Counts], Qobj]:
 
         assert isinstance(graph_circuit, QuantumCircuit), logger.error(
             "graph_circuit should be an instance of QuantumCircuit")
         # concatenate graph_circuit and stabilizer_circuits
         circuits = []
+        logging.info(
+            "Adding the stabilizer circuits to the graph circuit")
         for name, stab_circuit in stabilizer_circuits.items():
             circ = graph_circuit.copy()
             stab_gate = stab_circuit.to_gate(label=name)
@@ -195,27 +200,24 @@ class StabilizerSampler(CircuitSampler):
 
         # transpile circuits
         self.transpile_circuit(circuits, {})
-        self.noise_model = noise_model
+
+        # build noise model
+        self.build_noise_model(noise_model)
+
         # execute
-        if isinstance(self.backend, IBMQBackend):
+        if isinstance(self.backend, IBMQBackend) and execute:
             qjob_dict = self.execute_circuit(
                 circuit=circuits, execute=execute)
-            if execute:
-                job_monitor(qjob_dict["job"], interval=5)
+            job_monitor(qjob_dict["job"], interval=5)
             counts = qjob_dict["job"].result().get_counts()
         else:
             counts = self.simulate_circuit(circuits)
         return counts
 
-    # @staticmethod
-    # def count_cx_gates(stabilizer_circuits: Dict[str, QuantumCircuit],
-    #                    q_obj: Qobj) -> Dict[str, int]:
-    #     cx_counts = {}
-    #     q_dict = q_obj.to_dict()
-    #     for idx, circ_name in enumerate(stabilizer_circuits.keys()):
-    #         cx_counter = 0
-    #         instr = q_dict['experiments'][idx]['instructions']
-    #         for gate in instr:
-    #             if gate['name'] == 'cx':
-    #                 cx_counter += 1
-    #         cx_counts[circ_name] = cx_counter
+    def build_noise_model(self, noise_model):
+        if noise_model:
+            self.noise_model = noise_model
+            self.noisy = True
+        else:
+            self.noise_model = NoiseModel()
+            self.noisy = False
